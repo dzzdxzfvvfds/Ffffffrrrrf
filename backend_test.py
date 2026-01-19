@@ -5,7 +5,7 @@ import sys
 from datetime import datetime, date
 import json
 
-class GoogleSheetsSyncTester:
+class SimplifiedSyncTester:
     def __init__(self, base_url="https://syncmate-health.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.token = None
