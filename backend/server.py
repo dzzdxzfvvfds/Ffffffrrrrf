@@ -5893,19 +5893,6 @@ async def analyze_google_sheets_sync(
         # Genera ID per questa sessione di sincronizzazione
         current_sync_id = str(uuid.uuid4())
         
-        # Carica le scelte precedenti per applicarle automaticamente
-        previous_choices = await db.sync_choices.find(
-            {"ambulatorio": data.ambulatorio.value},
-            {"name": 1, "action": 1, "replace_with": 1, "replace_with_id": 1, "_id": 0}
-        ).to_list(None)
-        
-        # Mappa delle scelte precedenti: nome -> azione
-        previous_choices_map = {}
-        for choice in previous_choices:
-            previous_choices_map[choice["name"].lower().strip()] = choice
-        
-        logger.info(f"Scelte precedenti caricate: {len(previous_choices_map)}")
-        
         # Carica appuntamenti GIÀ SINCRONIZZATI in precedenza
         # Questi NON devono tornare anche se sono stati eliminati manualmente
         # Perché: modifiche manuali > sincronizzazione
