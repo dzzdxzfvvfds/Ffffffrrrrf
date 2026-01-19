@@ -5369,16 +5369,8 @@ async def sync_from_google_sheets(
         await db.sync_backups.insert_one(backup)
         logger.info(f"Backup creato: {len(patients_backup)} pazienti, {len(appointments_backup)} appuntamenti")
         
-        # NUOVO: Genera ID per questa sincronizzazione
+        # Genera ID per questa sincronizzazione
         current_sync_id = str(uuid.uuid4())
-        
-        # NUOVO: Elimina le vecchie scelte "not_selected" per questo ambulatorio
-        # Mantieni solo le scelte "selected", "replace", "create_new" (quelle definitive)
-        await db.sync_choices.delete_many({
-            "ambulatorio": data.ambulatorio.value,
-            "action": "not_selected"
-        })
-        logger.info("Eliminate vecchie scelte 'not_selected'")
         
         # Scarica il foglio come XLSX
         xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
