@@ -477,6 +477,41 @@ export default function PazientiPage() {
     setDeleteDialogOpen(true);
   };
 
+  // Apre dialog per cambio tipo paziente (PICC/MED)
+  const openTypeChangeDialog = (patient, e) => {
+    e.stopPropagation();
+    setSelectedPatientForTypeChange(patient);
+    // Imposta gli switch in base al tipo attuale
+    const tipo = patient.tipo || "PICC";
+    setEnablePicc(tipo === "PICC" || tipo === "PICC_MED");
+    setEnableMed(tipo === "MED" || tipo === "PICC_MED");
+    setTypeChangeDialogOpen(true);
+  };
+
+  // Gestisce il cambio tipo paziente
+  const handleTypeChange = async () => {
+    if (!selectedPatientForTypeChange) return;
+    
+    if (!enablePicc && !enableMed) {
+      toast.error("Seleziona almeno una categoria (PICC o MED)");
+      return;
+    }
+
+    try {
+      const response = await apiClient.put(`/patients/${selectedPatientForTypeChange.id}/tipo`, {
+        enable_picc: enablePicc,
+        enable_med: enableMed
+      });
+      
+      toast.success(response.data.message);
+      setTypeChangeDialogOpen(false);
+      setSelectedPatientForTypeChange(null);
+      fetchAllPatients();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Errore nel cambio tipo");
+    }
+  };
+
   const handleStatusChange = async () => {
     if (!selectedPatientForStatus) return;
     
