@@ -144,18 +144,14 @@ export default function AgendaPage() {
   const [syncConflicts, setSyncConflicts] = useState([]);
   const [syncConflictChoices, setSyncConflictChoices] = useState({});
   const [syncStep, setSyncStep] = useState("initial"); // initial, conflicts, syncing
-  const [pendingIgnoredNames, setPendingIgnoredNames] = useState([]); // Nomi da ignorare (salvati solo dopo conferma)
   const [nameAssociations, setNameAssociations] = useState({}); // Associazioni: nome_errato -> nome_corretto
   const [wrongAssociations, setWrongAssociations] = useState({}); // Accostamenti errati: {conflictId_name: {action: 'keep'|'new'|'replace', replaceWith: patientId}}
   
-  // Database scelte (nomi ignorati)
-  const [ignoredNamesDialogOpen, setIgnoredNamesDialogOpen] = useState(false);
-  const [ignoredNamesList, setIgnoredNamesList] = useState([]);
-  const [loadingIgnoredNames, setLoadingIgnoredNames] = useState(false);
-  
-  // Backup e rollback
-  const [backupInfo, setBackupInfo] = useState(null);
-  const [loadingBackup, setLoadingBackup] = useState(false);
+  // Revisioni manuali
+  const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
+  const [revisionScope, setRevisionScope] = useState("day"); // day, day_picc, day_med, week, month
+  const [activeRevisions, setActiveRevisions] = useState([]);
+  const [revisedAppointments, setRevisedAppointments] = useState([]); // Appuntamenti in date revisionate dalla sync
   
   // Ricerca pazienti per "Sostituisci con"
   const [patientSearchQuery, setPatientSearchQuery] = useState("");
@@ -169,6 +165,52 @@ export default function AgendaPage() {
   const [tempCreatedPatients, setTempCreatedPatients] = useState([]); // Pazienti creati durante la sync (disponibili per "Sostituisci")
 
   const isVillaGinestre = ambulatorio === "villa_ginestre";
+
+  // Carica revisioni attive per la data corrente
+  const loadRevisions = async () => {
+    try {
+      const dateStr = format(currentDate, "yyyy-MM-dd");
+      const response = await apiClient.get(`/revisions/check`, {
+        params: { ambulatorio, dates: dateStr }
+      });
+      const revisionsForDate = response.data.revised_dates?.[dateStr] || [];
+      setActiveRevisions(revisionsForDate);
+    } catch (error) {
+      console.error("Errore caricamento revisioni:", error);
+    }
+  };
+
+  // Crea una revisione
+  const createRevision = async () => {
+    try {
+      const response = await apiClient.post("/revisions", {
+        ambulatorio,
+        scope: revisionScope,
+        date: format(currentDate, "yyyy-MM-dd"),
+        notes: `Revisione manuale ${revisionScope}`
+      });
+      toast.success(response.data.message);
+      setRevisionDialogOpen(false);
+      loadRevisions();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Errore creazione revisione");
+    }
+  };
+
+  // Annulla una revisione
+  const deleteRevision = async (revisionId) => {
+    try {
+      await apiClient.delete(`/revisions/${revisionId}`);
+      toast.success("Revisione annullata");
+      loadRevisions();
+    } catch (error) {
+      toast.error("Errore annullamento revisione");
+    }
+  };
+
+  useEffect(() => {
+    loadRevisions();
+  }, [currentDate, ambulatorio]);
 
   // Carica info backup
   const loadBackupInfo = async () => {
