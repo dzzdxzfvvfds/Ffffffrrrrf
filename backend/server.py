@@ -6928,7 +6928,9 @@ async def sync_v2_analyze(data: GoogleSheetsSyncRequest, payload: dict = Depends
                     })
                     
                     # Aggiungi pazienti simili dal DB
-                    for name, sim in similar[:5]:
+                    for item in similar[:5]:
+                        name = item[0]
+                        sim = item[1]
                         patient_id_match = existing_patients_map.get(name.lower())
                         if patient_id_match:
                             conflict_options.append({
