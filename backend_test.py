@@ -125,8 +125,8 @@ class GoogleSheetsSyncTester:
             return True
         return False
 
-    def test_manual_appointment_modification(self):
-        """Test manual modification of imported appointment adds manually_modified flag"""
+    def test_manual_appointment_modification_debug(self):
+        """Debug version - test manual modification step by step"""
         if not self.appointment_id:
             print("❌ No appointment ID available for manual modification test")
             return False
@@ -155,16 +155,20 @@ class GoogleSheetsSyncTester:
                 print(f"   - Patient names: {our_appointment.get('patient_cognome', '')} {our_appointment.get('patient_nome', '')}")
                 print(f"   - Current prestazioni: {our_appointment.get('prestazioni', [])}")
                 print(f"   - Current stato: {our_appointment.get('stato')}")
-            
-        # Modify the appointment manually (change prestazioni and stato)
+                
+                # Check if note matches exactly
+                note_matches = our_appointment.get('note') == "Importato da Google Sheets"
+                print(f"   - Note matches 'Importato da Google Sheets': {note_matches}")
+        
+        # Try modifying without changing the note first
         update_data = {
             "prestazioni": ["medicazione_semplice", "irrigazione_catetere"],
-            "stato": "effettuato",
-            "note": "Modificato manualmente - aggiunta irrigazione"
+            "stato": "effettuato"
+            # Don't change note yet
         }
         
         success, response = self.run_test(
-            "Manually modify imported appointment",
+            "Manually modify imported appointment (without changing note)",
             "PUT",
             f"appointments/{self.appointment_id}",
             200,
