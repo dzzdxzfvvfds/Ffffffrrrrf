@@ -6175,6 +6175,7 @@ async def analyze_google_sheets_sync(
                 # Controlla se abbiamo già una scelta precedente
                 if full_name_lower in previous_choices_map:
                     prev_choice = previous_choices_map[full_name_lower]
+                    logger.info(f"Trovata scelta precedente per '{full_name}': {prev_choice.get('action')}")
                     # Applica la scelta precedente automaticamente
                     if prev_choice["action"] == "not_selected":
                         # Questo nome è stato ignorato in precedenza - skip
@@ -6193,6 +6194,8 @@ async def analyze_google_sheets_sync(
                         apt["_auto_create"] = True
                         new_appointments.append(apt)
                         continue
+                else:
+                    logger.info(f"Nessuna scelta precedente per '{full_name}' - sarà mostrato come conflitto")
                 
                 # Nessuna scelta precedente - potrebbe essere un conflitto
                 new_appointments.append(apt)
