@@ -1741,11 +1741,6 @@ export default function AgendaPage() {
                                       dal foglio
                                     </span>
                                   )}
-                                  {isNamePendingIgnore(option.name) && (
-                                    <span className="px-2 py-0.5 bg-orange-500 text-white text-xs rounded-full font-medium">
-                                      🚫 VERRÀ IGNORATO
-                                    </span>
-                                  )}
                                   <span className="text-xs text-gray-500">
                                     ({option.similarity}% simile)
                                   </span>
