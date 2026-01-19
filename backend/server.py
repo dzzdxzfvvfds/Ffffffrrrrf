@@ -640,6 +640,59 @@ async def delete_patient(patient_id: str, payload: dict = Depends(verify_token))
     
     return {"message": "Paziente e tutte le schede correlate eliminati"}
 
+# ============== CAMBIO TIPO PAZIENTE (PICC/MED) ==============
+class PatientTypeChange(BaseModel):
+    enable_picc: bool
+    enable_med: bool
+
+@api_router.put("/patients/{patient_id}/tipo")
+async def change_patient_type(patient_id: str, data: PatientTypeChange, payload: dict = Depends(verify_token)):
+    """
+    Cambia il tipo di paziente (PICC, MED, PICC_MED).
+    Gli appuntamenti esistenti NON vengono modificati.
+    """
+    patient = await db.patients.find_one({"id": patient_id}, {"_id": 0})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paziente non trovato")
+    if patient["ambulatorio"] not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    # Villa Ginestre: solo PICC
+    if patient["ambulatorio"] == "villa_ginestre" and data.enable_med:
+        raise HTTPException(status_code=400, detail="Villa delle Ginestre gestisce solo pazienti PICC")
+    
+    # Determina il nuovo tipo
+    if data.enable_picc and data.enable_med:
+        new_tipo = "PICC_MED"
+    elif data.enable_picc:
+        new_tipo = "PICC"
+    elif data.enable_med:
+        new_tipo = "MED"
+    else:
+        raise HTTPException(status_code=400, detail="Seleziona almeno una categoria (PICC o MED)")
+    
+    old_tipo = patient.get("tipo", "")
+    
+    # Aggiorna il tipo paziente
+    await db.patients.update_one(
+        {"id": patient_id},
+        {"$set": {
+            "tipo": new_tipo,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "tipo_changed_at": datetime.now(timezone.utc).isoformat(),
+            "tipo_changed_from": old_tipo
+        }}
+    )
+    
+    updated = await db.patients.find_one({"id": patient_id}, {"_id": 0})
+    logger.info(f"Paziente {patient_id} tipo cambiato: {old_tipo} -> {new_tipo}")
+    
+    return {
+        "success": True,
+        "patient": updated,
+        "message": f"Tipo paziente cambiato da {old_tipo} a {new_tipo}"
+    }
+
 # ============== BATCH PATIENT OPERATIONS ==============
 class BatchPatientCreate(BaseModel):
     patients: List[PatientCreate]
