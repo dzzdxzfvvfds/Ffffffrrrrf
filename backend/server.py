@@ -5769,6 +5769,21 @@ async def sync_from_google_sheets(
         logger.info(f"Sincronizzazione completata: {created_patients} pazienti, {created_appointments} appuntamenti")
         logger.info(f"Skip dettagli: no_patient={skipped_no_patient}, existing={skipped_existing}")
         
+        # SALVA TIMESTAMP SINCRONIZZAZIONE
+        sync_timestamp = SyncTimestamp(
+            ambulatorio=data.ambulatorio.value,
+            last_sync_at=datetime.now(timezone.utc).isoformat(),
+            last_sync_by=payload["sub"],
+            appointments_synced=created_appointments,
+            patients_synced=created_patients
+        )
+        await db.sync_timestamps.update_one(
+            {"ambulatorio": data.ambulatorio.value},
+            {"$set": sync_timestamp.model_dump()},
+            upsert=True
+        )
+        logger.info(f"Timestamp sincronizzazione salvato per {data.ambulatorio.value}")
+        
         return {
             "success": True,
             "message": f"Sincronizzazione completata da {len(sheets_processed)} fogli",
@@ -5777,7 +5792,8 @@ async def sync_from_google_sheets(
             "created_appointments": created_appointments,
             "skipped_appointments": skipped_appointments,
             "total_parsed": len(all_appointments),
-            "sync_id": current_sync_id
+            "sync_id": current_sync_id,
+            "sync_timestamp": sync_timestamp.last_sync_at
         }
         
     except httpx.TimeoutException:
