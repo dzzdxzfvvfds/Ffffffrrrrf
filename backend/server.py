@@ -5636,25 +5636,33 @@ async def sync_from_google_sheets(
                 continue
             
             # Cerca paziente esistente con query flessibile
-            query = {"cognome": {"$regex": f"^{cognome}$", "$options": "i"}, "ambulatorio": data.ambulatorio.value}
+            # Escape caratteri speciali regex nel cognome
+            import re
+            cognome_escaped = re.escape(cognome)
+            
+            # Prima prova match esatto del cognome (case-insensitive)
+            query = {"cognome": {"$regex": f"^{cognome_escaped}\\s*\\.?$", "$options": "i"}, "ambulatorio": data.ambulatorio.value}
             if nome:
-                query["nome"] = {"$regex": f"^{nome}$", "$options": "i"}
+                nome_escaped = re.escape(nome)
+                query["nome"] = {"$regex": f"^{nome_escaped}", "$options": "i"}
             
             existing = await db.patients.find_one(query, {"_id": 0})
             
-            if not existing and not nome:
+            # Se non trova, cerca solo per cognome (potrebbe avere nome diverso nel DB)
+            if not existing:
                 cognome_query = {
-                    "cognome": {"$regex": f"^{cognome}$", "$options": "i"}, 
+                    "cognome": {"$regex": f"^{cognome_escaped}\\s*\\.?$", "$options": "i"}, 
                     "ambulatorio": data.ambulatorio.value
                 }
                 existing = await db.patients.find_one(cognome_query, {"_id": 0})
             
-            if not existing and nome:
-                cognome_only_query = {
-                    "cognome": {"$regex": f"^{cognome}$", "$options": "i"},
+            # Prova anche cerca "cognome contiene" per casi come "Di Trapani" -> "Di Trapani  ."
+            if not existing:
+                cognome_contains_query = {
+                    "cognome": {"$regex": cognome_escaped, "$options": "i"},
                     "ambulatorio": data.ambulatorio.value
                 }
-                existing = await db.patients.find_one(cognome_only_query, {"_id": 0})
+                existing = await db.patients.find_one(cognome_contains_query, {"_id": 0})
             
             if existing:
                 patient_id_map[(cognome, nome)] = existing["id"]
@@ -5664,6 +5672,7 @@ async def sync_from_google_sheets(
                         if apt["cognome"].lower() == cognome.lower() and apt["nome"].lower() == (nome or "").lower():
                             apt["cognome"] = existing["cognome"]
                             apt["nome"] = existing.get("nome", "")
+                logger.info(f"Match trovato: '{cognome} {nome}' -> '{existing['cognome']} {existing.get('nome', '')}'")
             else:
                 # NUOVA LOGICA: Controlla se c'è un'azione esplicita per creare questo paziente
                 full_name = f"{cognome} {nome}".strip()
