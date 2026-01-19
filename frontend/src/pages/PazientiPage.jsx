@@ -968,6 +968,16 @@ export default function PazientiPage() {
                           </DropdownItem>
                         ))}
                         <DropdownSeparator />
+                        {/* Gestisci Categorie PICC/MED - Solo per PTA Centro */}
+                        {!isVillaGinestre && (
+                          <DropdownItem
+                            onClick={(e) => openTypeChangeDialog(patient, e)}
+                            icon={Settings2}
+                            className="text-purple-600"
+                          >
+                            Gestisci Categorie
+                          </DropdownItem>
+                        )}
                         <DropdownItem
                           onClick={(e) => {
                             e.stopPropagation();
