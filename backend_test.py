@@ -296,35 +296,35 @@ class GoogleSheetsSyncTester:
             )
 
 def main():
-    print("🏥 Testing Ambulatorio Infermieristico API - Patient Type Change & Sync Features")
+    print("🏥 Testing Google Sheets Sync System - Manual Modification Tracking")
     print("=" * 80)
     
-    tester = AmbulatorioAPITester()
+    tester = GoogleSheetsSyncTester()
     
     try:
-        # Test sequence
+        # Test sequence focusing on sync functionality
         if not tester.test_login():
             print("❌ Login failed, stopping tests")
             return 1
 
-        if not tester.test_create_picc_patient():
-            print("❌ Patient creation failed, stopping tests")
+        if not tester.test_create_appointment_from_sheets():
+            print("❌ Appointment creation (simulating Google Sheets import) failed")
             return 1
 
-        if not tester.test_change_patient_type():
-            print("❌ Patient type change failed")
+        if not tester.test_manual_appointment_modification():
+            print("❌ Manual appointment modification failed")
             return 1
 
-        if not tester.test_sync_timestamp_api():
-            print("❌ Sync timestamp API failed")
+        if not tester.test_get_manual_edits_endpoint():
+            print("❌ Manual edits endpoint failed")
             return 1
 
-        if not tester.test_create_appointment():
-            print("❌ Appointment creation failed")
+        if not tester.test_sync_timestamp_endpoint():
+            print("❌ Sync timestamp endpoint failed")
             return 1
 
-        if not tester.test_get_appointments():
-            print("❌ Get appointments failed")
+        if not tester.test_appointment_preservation_logic():
+            print("❌ Appointment preservation logic test failed")
             return 1
 
         # Print results
@@ -332,12 +332,13 @@ def main():
         print(f"Tests passed: {tester.tests_passed}/{tester.tests_run}")
         
         if tester.tests_passed == tester.tests_run:
-            print("✅ All backend API tests passed!")
+            print("✅ All Google Sheets sync tests passed!")
             print("🔍 Key findings:")
-            print("   - Login with Domenico credentials works")
-            print("   - Patient type change API (PUT /api/patients/{id}/tipo) works")
-            print("   - Sync timestamp API (GET /api/sync/timestamp/{ambulatorio}) works")
-            print("   - Patient creation and appointment management works")
+            print("   - Login with Domenico/infermiere credentials works")
+            print("   - Manual modification of imported appointments adds 'manually_modified' flag")
+            print("   - GET /api/sync/manual-edits/{ambulatorio} endpoint works")
+            print("   - Sync timestamp tracking is functional")
+            print("   - Manual modifications are properly tracked for preservation during sync")
             return 0
         else:
             print("❌ Some tests failed")
