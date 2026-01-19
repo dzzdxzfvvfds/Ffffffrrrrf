@@ -213,50 +213,6 @@ export default function AgendaPage() {
     loadRevisions();
   }, [currentDate, ambulatorio]);
 
-  // Carica info backup
-  const loadBackupInfo = async () => {
-    try {
-      const response = await apiClient.get(`/sync/backup/${ambulatorio}`);
-      setBackupInfo(response.data);
-    } catch (error) {
-      console.error("Error loading backup info:", error);
-    }
-  };
-
-  // Annulla ultima sincronizzazione
-  const handleRollback = async () => {
-    if (!window.confirm("Sei sicuro di voler annullare l'ultima sincronizzazione? Tutti i dati verranno ripristinati allo stato precedente.")) {
-      return;
-    }
-    
-    setLoadingBackup(true);
-    try {
-      const response = await apiClient.post(`/sync/rollback/${ambulatorio}`);
-      toast.success(`Ripristinati ${response.data.restored_patients} pazienti e ${response.data.restored_appointments} appuntamenti`);
-      setBackupInfo(null);
-      fetchData();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Errore nel ripristino");
-    } finally {
-      setLoadingBackup(false);
-    }
-  };
-
-  // Svuota database scelte - RESET COMPLETO per ri-sincronizzazione
-  const handleClearIgnoredNames = async () => {
-    if (!window.confirm("Sei sicuro di voler eliminare tutte le scelte salvate?\nLa prossima sincronizzazione ripartirà da zero e mostrerà tutti i conflitti.")) {
-      return;
-    }
-    
-    try {
-      const response = await apiClient.delete(`/sync/choices/clear/${ambulatorio}`);
-      toast.success(`Eliminate ${response.data.deleted_choices} scelte. La prossima sincronizzazione ripartirà da zero.`);
-      setIgnoredNamesList([]);
-    } catch (error) {
-      toast.error("Errore nell'eliminazione");
-    }
-  };
-
   // Carica tutti i pazienti per la ricerca
   const loadAllPatients = async () => {
     try {
