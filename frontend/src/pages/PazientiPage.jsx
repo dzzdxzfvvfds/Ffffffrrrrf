@@ -1516,6 +1516,106 @@ export default function PazientiPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Cambio Tipo Paziente Dialog (PICC/MED) */}
+      <Dialog open={typeChangeDialogOpen} onOpenChange={setTypeChangeDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Gestisci Categorie Paziente</DialogTitle>
+            <DialogDescription>
+              {selectedPatientForTypeChange && (
+                <>
+                  <span className="font-medium">
+                    {selectedPatientForTypeChange.cognome} {selectedPatientForTypeChange.nome}
+                  </span>
+                  <br />
+                  <span className="text-xs text-muted-foreground">
+                    Tipo attuale: <Badge className={getTypeColor(selectedPatientForTypeChange.tipo)}>
+                      {selectedPatientForTypeChange.tipo === "PICC_MED" ? "PICC + MED" : selectedPatientForTypeChange.tipo}
+                    </Badge>
+                  </span>
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Nota:</strong> Gli appuntamenti esistenti manterranno la loro categoria originale. 
+                Questa modifica abilita/disabilita solo la possibilità di creare nuovi appuntamenti nelle categorie selezionate.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {/* PICC Toggle */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <span className="text-emerald-700 font-bold text-sm">P</span>
+                  </div>
+                  <div>
+                    <p className="font-medium">PICC</p>
+                    <p className="text-xs text-muted-foreground">Gestione cateteri PICC</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={enablePicc}
+                  onCheckedChange={setEnablePicc}
+                  data-testid="toggle-picc"
+                />
+              </div>
+
+              {/* MED Toggle */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <span className="text-blue-700 font-bold text-sm">M</span>
+                  </div>
+                  <div>
+                    <p className="font-medium">MED</p>
+                    <p className="text-xs text-muted-foreground">Medicazioni e prestazioni</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={enableMed}
+                  onCheckedChange={setEnableMed}
+                  data-testid="toggle-med"
+                />
+              </div>
+            </div>
+
+            {/* Preview del nuovo tipo */}
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm text-muted-foreground mb-2">Nuovo tipo:</p>
+              <Badge className={`text-lg px-4 py-1 ${
+                enablePicc && enableMed ? "bg-purple-100 text-purple-700" :
+                enablePicc ? "bg-emerald-100 text-emerald-700" :
+                enableMed ? "bg-blue-100 text-blue-700" :
+                "bg-gray-100 text-gray-700"
+              }`}>
+                {enablePicc && enableMed ? "PICC + MED" :
+                 enablePicc ? "PICC" :
+                 enableMed ? "MED" :
+                 "Nessuno"}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setTypeChangeDialogOpen(false)}>
+              Annulla
+            </Button>
+            <Button 
+              onClick={handleTypeChange}
+              disabled={!enablePicc && !enableMed}
+              data-testid="confirm-type-change-btn"
+            >
+              Salva Modifiche
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
