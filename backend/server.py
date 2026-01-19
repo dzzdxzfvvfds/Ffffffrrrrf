@@ -6021,7 +6021,7 @@ async def analyze_google_sheets_sync(
             if full_key in existing_patients_by_fullname:
                 return existing_patients_by_fullname[full_key]
             
-            # 2. Cerca per cognome
+            # 2. Cerca per cognome (esatto)
             if cognome_lower in existing_patients_by_cognome:
                 patients_same_cognome = existing_patients_by_cognome[cognome_lower]
                 
@@ -6041,6 +6041,26 @@ async def analyze_google_sheets_sync(
                 # Se nessun match specifico ma il nome dal foglio è vuoto, usa il primo
                 if not nome_lower and patients_same_cognome:
                     return patients_same_cognome[0]["id"]
+            
+            # 3. NUOVO: Cerca per cognome che CONTIENE il testo (es. "Di Trapani  ." contiene "di trapani")
+            for db_cognome, patients in existing_patients_by_cognome.items():
+                # Normalizza il cognome DB rimuovendo spazi extra e caratteri speciali
+                db_cognome_clean = db_cognome.strip().rstrip('.').strip().lower()
+                
+                # Se il cognome del foglio è contenuto nel cognome DB (o viceversa)
+                if cognome_lower in db_cognome_clean or db_cognome_clean in cognome_lower:
+                    if len(patients) == 1:
+                        return patients[0]["id"]
+                    
+                    # Se ci sono più pazienti, cerca match per nome
+                    for p in patients:
+                        if not p["nome"] or not nome_lower:
+                            return p["id"]
+                        if nome_lower in p["nome"] or p["nome"] in nome_lower:
+                            return p["id"]
+                    
+                    # Usa il primo se nessun match nome
+                    return patients[0]["id"]
             
             return None
         
