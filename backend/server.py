@@ -202,6 +202,10 @@ class Appointment(BaseModel):
     note: Optional[str] = None
     stato: str = "da_fare"  # da_fare, effettuato, non_presentato
     completed: bool = False  # kept for backward compatibility
+    # Manual modification tracking for Google Sheets sync
+    manually_modified: Optional[bool] = None
+    manually_modified_at: Optional[str] = None
+    manually_modified_by: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 # Scheda Medicazione MED
