@@ -6500,6 +6500,43 @@ async def analyze_google_sheets_sync(
                     "type": "new_patient"
                 })
         
+        # Identifica appuntamenti in date revisionate
+        revised_appointments = []
+        for apt in new_appointments:
+            if apt["date"] in revised_dates_map:
+                revisions_for_date = revised_dates_map[apt["date"]]
+                for rev in revisions_for_date:
+                    # Verifica se la revisione si applica a questo appuntamento
+                    applies = False
+                    if rev["scope"] == "day":
+                        applies = True
+                    elif rev["scope"] == "day_picc" and apt["tipo"] == "PICC":
+                        applies = True
+                    elif rev["scope"] == "day_med" and apt["tipo"] == "MED":
+                        applies = True
+                    elif rev["scope"] == "week":
+                        applies = True
+                    elif rev["scope"] == "month":
+                        applies = True
+                    elif rev["scope"] == "slot" and rev.get("slot_ora") == apt.get("ora") and rev.get("slot_tipo") == apt.get("tipo"):
+                        applies = True
+                    elif rev["scope"] == "patient" and rev.get("patient_id"):
+                        # Per paziente specifico, verifica se l'appuntamento è per quel paziente
+                        if apt.get("_matched_patient_id") == rev.get("patient_id"):
+                            applies = True
+                    
+                    if applies:
+                        revised_appointments.append({
+                            "cognome": apt["cognome"],
+                            "nome": apt["nome"],
+                            "date": apt["date"],
+                            "ora": apt.get("ora"),
+                            "tipo": apt["tipo"],
+                            "revision_scope": rev["scope"],
+                            "revision_id": rev["id"]
+                        })
+                        break
+        
         return {
             "success": True,
             "sync_id": current_sync_id,
@@ -6512,7 +6549,9 @@ async def analyze_google_sheets_sync(
             "skipped_existing": skipped_existing,
             "skipped_already_synced": skipped_already_synced,
             "new_patients_to_manage": len([c for c in conflicts if c.get("type") == "new_patient"]),
-            "message": f"Trovati {len(new_appointments)} nuovi appuntamenti" + (f" ({len(conflicts)} pazienti da gestire)" if conflicts else "")
+            "revised_appointments": revised_appointments,
+            "revised_dates_count": len(revised_dates_map),
+            "message": f"Trovati {len(new_appointments)} nuovi appuntamenti" + (f" ({len(conflicts)} pazienti da gestire)" if conflicts else "") + (f" - {len(revised_appointments)} in date revisionate" if revised_appointments else "")
         }
         
     except Exception as e:
