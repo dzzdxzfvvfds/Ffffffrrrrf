@@ -6016,10 +6016,18 @@ async def analyze_google_sheets_sync(
             cognome_lower = cognome_sheet.lower().strip()
             nome_lower = nome_sheet.lower().strip() if nome_sheet else ""
             
+            # Rimuovi spazi extra e punti dal cognome per normalizzazione
+            cognome_normalized = cognome_lower.rstrip('.').strip()
+            
             # 1. Prova match esatto nome completo
             full_key = f"{cognome_lower} {nome_lower}".strip()
             if full_key in existing_patients_by_fullname:
                 return existing_patients_by_fullname[full_key]
+            
+            # Prova anche con cognome normalizzato
+            full_key_normalized = f"{cognome_normalized} {nome_lower}".strip()
+            if full_key_normalized in existing_patients_by_fullname:
+                return existing_patients_by_fullname[full_key_normalized]
             
             # 2. Cerca per cognome (esatto)
             if cognome_lower in existing_patients_by_cognome:
@@ -6031,36 +6039,49 @@ async def analyze_google_sheets_sync(
                 
                 # Se ci sono più pazienti, cerca match per nome
                 for p in patients_same_cognome:
-                    # Se il paziente nel DB non ha nome, match!
                     if not p["nome"]:
                         return p["id"]
-                    # Se i nomi corrispondono
                     if p["nome"] == nome_lower:
                         return p["id"]
                 
-                # Se nessun match specifico ma il nome dal foglio è vuoto, usa il primo
                 if not nome_lower and patients_same_cognome:
                     return patients_same_cognome[0]["id"]
             
-            # 3. NUOVO: Cerca per cognome che CONTIENE il testo (es. "Di Trapani  ." contiene "di trapani")
+            # 3. Cerca per cognome normalizzato (senza spazi/punti extra)
             for db_cognome, patients in existing_patients_by_cognome.items():
-                # Normalizza il cognome DB rimuovendo spazi extra e caratteri speciali
-                db_cognome_clean = db_cognome.strip().rstrip('.').strip().lower()
+                db_cognome_normalized = db_cognome.strip().rstrip('.').strip().lower()
                 
-                # Se il cognome del foglio è contenuto nel cognome DB (o viceversa)
-                if cognome_lower in db_cognome_clean or db_cognome_clean in cognome_lower:
+                # Match SOLO se i cognomi normalizzati sono UGUALI (non contenuti)
+                if cognome_normalized == db_cognome_normalized:
                     if len(patients) == 1:
                         return patients[0]["id"]
                     
-                    # Se ci sono più pazienti, cerca match per nome
                     for p in patients:
                         if not p["nome"] or not nome_lower:
                             return p["id"]
                         if nome_lower in p["nome"] or p["nome"] in nome_lower:
                             return p["id"]
                     
-                    # Usa il primo se nessun match nome
                     return patients[0]["id"]
+            
+            # 4. Per cognomi composti (es. "Di Trapani"), prova a trovare match parziale SOLO se lungo abbastanza
+            # Evita match per prefissi comuni come "Di", "De", "La"
+            if len(cognome_normalized) >= 5:
+                for db_cognome, patients in existing_patients_by_cognome.items():
+                    db_cognome_normalized = db_cognome.strip().rstrip('.').strip().lower()
+                    
+                    # Controlla se uno inizia con l'altro (per gestire spazi extra)
+                    if db_cognome_normalized.startswith(cognome_normalized) or cognome_normalized.startswith(db_cognome_normalized):
+                        if len(patients) == 1:
+                            return patients[0]["id"]
+                        
+                        for p in patients:
+                            if not p["nome"] or not nome_lower:
+                                return p["id"]
+                            if nome_lower in p["nome"] or p["nome"] in nome_lower:
+                                return p["id"]
+                        
+                        return patients[0]["id"]
             
             return None
         
