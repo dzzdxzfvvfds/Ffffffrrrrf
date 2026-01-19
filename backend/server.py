@@ -6110,7 +6110,6 @@ async def analyze_google_sheets_sync(
         new_appointments = []
         skipped_existing = 0
         skipped_already_synced = 0
-        skipped_previous_choices = 0
         
         # DEBUG: Log chiavi per "Di Trapani"
         for k in existing_apt_keys:
