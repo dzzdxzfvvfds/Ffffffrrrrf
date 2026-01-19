@@ -239,37 +239,65 @@ class AmbulatorioAPITester:
             return True
         return False
 
-    def test_statistics_exclusion(self):
-        """Test that non_presentato appointments are excluded from statistics"""
-        current_year = date.today().year
-        current_month = date.today().month
-        
-        params = {
-            "ambulatorio": "pta_centro",
-            "anno": current_year,
-            "mese": current_month
+    def test_change_patient_type(self):
+        """Test changing patient type from PICC to MED using new endpoint"""
+        if not self.patient_id:
+            print("❌ No patient ID available for type change test")
+            return False
+            
+        # Test changing patient type to enable both PICC and MED
+        type_change_data = {
+            "enable_picc": True,
+            "enable_med": True
         }
         
         success, response = self.run_test(
-            "Get Statistics (should exclude non_presentato)",
-            "GET",
-            "statistics",
+            "Change Patient Type to PICC_MED",
+            "PUT",
+            f"patients/{self.patient_id}/tipo",
             200,
-            params=params
+            data=type_change_data
         )
         
         if success:
-            total_accessi = response.get('totale_accessi', 0)
-            prestazioni = response.get('prestazioni', {})
+            patient_data = response.get('patient', {})
+            new_type = patient_data.get('tipo')
+            message = response.get('message', '')
             
-            print(f"📊 Statistics Results:")
-            print(f"   Total accessi: {total_accessi}")
-            print(f"   Prestazioni: {prestazioni}")
+            print(f"✅ Patient type changed successfully:")
+            print(f"   - New type: {new_type}")
+            print(f"   - Message: {message}")
             
-            # The appointment we created should NOT be counted since it's non_presentato
-            # This is the key test - if the exclusion works, our test appointment won't appear
-            print(f"✅ Statistics retrieved - non_presentato exclusion working")
-            return True
+            if new_type == "PICC_MED":
+                return True
+            else:
+                print(f"❌ Expected type PICC_MED, got {new_type}")
+                return False
+        return False
+
+    def test_sync_timestamp_api(self):
+        """Test the sync timestamp API for Google Sheets synchronization"""
+        success, response = self.run_test(
+            "Get Sync Timestamp for pta_centro",
+            "GET",
+            "sync/timestamp/pta_centro",
+            200
+        )
+        
+        if success:
+            timestamp = response.get('timestamp')
+            ambulatorio = response.get('ambulatorio')
+            
+            print(f"✅ Sync timestamp retrieved:")
+            print(f"   - Ambulatorio: {ambulatorio}")
+            print(f"   - Timestamp: {timestamp}")
+            
+            # Timestamp should be a valid ISO format or None
+            if timestamp is None or isinstance(timestamp, str):
+                return True
+            else:
+                print(f"❌ Invalid timestamp format: {timestamp}")
+                return False
         return False
 
     def test_get_appointments(self):
