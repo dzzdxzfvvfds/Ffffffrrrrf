@@ -6270,7 +6270,6 @@ async def analyze_google_sheets_sync(
             "existing_patients_count": len(existing_patients_list),
             "skipped_existing": skipped_existing,
             "skipped_already_synced": skipped_already_synced,
-            "skipped_previous_choices": skipped_previous_choices,
             "new_patients_to_manage": len([c for c in conflicts if c.get("type") == "new_patient"]),
             "message": f"Trovati {len(new_appointments)} nuovi appuntamenti" + (f" ({len(conflicts)} pazienti da gestire)" if conflicts else "")
         }
