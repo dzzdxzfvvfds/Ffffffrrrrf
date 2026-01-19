@@ -6,7 +6,7 @@ from datetime import datetime, date
 import json
 
 class SimplifiedSyncTester:
-    def __init__(self, base_url="https://syncmate-health.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://appointment-hub-218.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.token = None
         self.tests_run = 0
