@@ -6768,6 +6768,512 @@ async def rollback_sync(ambulatorio: str, payload: dict = Depends(verify_token))
         "message": "Sincronizzazione annullata, dati ripristinati"
     }
 
+# ============== NUOVO SISTEMA SYNC BASATO SU SNAPSHOT TEMPORALI ==============
+import gspread
+from google.oauth2.service_account import Credentials as GoogleCredentials
+import hashlib
+
+GOOGLE_CREDENTIALS_PATH = "/app/backend/google_credentials.json"
+GOOGLE_SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets.readonly',
+    'https://www.googleapis.com/auth/drive.readonly'
+]
+
+def get_appointment_hash(cognome: str, nome: str, date: str, ora: str, tipo: str) -> str:
+    """Genera un hash unico per un appuntamento"""
+    key = f"{cognome.lower().strip()}|{(nome or '').lower().strip()}|{date}|{ora}|{tipo}"
+    return hashlib.md5(key.encode()).hexdigest()
+
+@api_router.post("/sync/v2/analyze")
+async def sync_v2_analyze(data: GoogleSheetsSyncRequest, payload: dict = Depends(verify_token)):
+    """
+    NUOVO SISTEMA: Analizza il foglio Google e confronta con l'ultimo snapshot.
+    Mostra SOLO gli appuntamenti nuovi rispetto all'ultima sincronizzazione.
+    """
+    if data.ambulatorio.value not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    try:
+        # Connetti a Google Sheets
+        credentials = GoogleCredentials.from_service_account_file(GOOGLE_CREDENTIALS_PATH, scopes=GOOGLE_SCOPES)
+        gc = gspread.authorize(credentials)
+        
+        sheet_id = GOOGLE_SHEET_ID
+        spreadsheet = gc.open_by_key(sheet_id)
+        
+        year = data.year or datetime.now().year
+        
+        # Ottieni l'ultimo snapshot per questo ambulatorio
+        last_snapshot = await db.sync_snapshots.find_one(
+            {"ambulatorio": data.ambulatorio.value},
+            sort=[("sync_at", -1)]
+        )
+        
+        last_sync_at = last_snapshot["sync_at"] if last_snapshot else None
+        last_hashes = set(last_snapshot.get("appointment_hashes", [])) if last_snapshot else set()
+        
+        logger.info(f"Ultima sincronizzazione: {last_sync_at or 'MAI'}")
+        logger.info(f"Appuntamenti nello snapshot precedente: {len(last_hashes)}")
+        
+        # Parse tutti i fogli
+        all_appointments = []
+        sheets_processed = []
+        
+        for ws in spreadsheet.worksheets():
+            sheet_name = ws.title
+            
+            # Salta fogli non validi
+            if not any(c.isdigit() for c in sheet_name):
+                continue
+            
+            try:
+                # Leggi tutti i dati del foglio
+                data_rows = ws.get_all_values()
+                
+                if len(data_rows) < 7:
+                    continue
+                
+                # Parse usando la logica esistente
+                appointments, patients = parse_sheet_data_from_list(data_rows, year, sheet_name)
+                
+                if appointments:
+                    all_appointments.extend(appointments)
+                    sheets_processed.append(sheet_name)
+                    
+            except Exception as e:
+                logger.warning(f"Errore nel foglio {sheet_name}: {e}")
+                continue
+        
+        logger.info(f"Totale appuntamenti dal foglio: {len(all_appointments)}")
+        
+        # Calcola hash per ogni appuntamento
+        current_hashes = {}
+        for apt in all_appointments:
+            h = get_appointment_hash(apt["cognome"], apt.get("nome", ""), apt["date"], apt.get("ora", ""), apt.get("tipo", ""))
+            current_hashes[h] = apt
+        
+        # Trova appuntamenti NUOVI (non presenti nell'ultimo snapshot)
+        new_hashes = set(current_hashes.keys()) - last_hashes
+        new_appointments = [current_hashes[h] for h in new_hashes]
+        
+        logger.info(f"Appuntamenti NUOVI da analizzare: {len(new_appointments)}")
+        
+        # Se non ci sono nuovi appuntamenti
+        if not new_appointments:
+            return {
+                "success": True,
+                "message": "Nessun nuovo appuntamento dal foglio Google dall'ultima sincronizzazione",
+                "new_appointments_count": 0,
+                "last_sync_at": last_sync_at,
+                "total_in_sheet": len(all_appointments),
+                "conflicts": [],
+                "has_conflicts": False
+            }
+        
+        # Carica pazienti esistenti per verificare conflitti
+        existing_patients = await db.patients.find(
+            {"ambulatorio": data.ambulatorio.value},
+            {"id": 1, "cognome": 1, "nome": 1, "_id": 0}
+        ).to_list(None)
+        
+        existing_patients_map = {}
+        for p in existing_patients:
+            full_name = f"{p['cognome']} {p.get('nome', '')}".strip().lower()
+            existing_patients_map[full_name] = p["id"]
+            # Anche solo cognome
+            existing_patients_map[p['cognome'].lower().strip()] = p["id"]
+        
+        # Analizza i nuovi appuntamenti per trovare conflitti
+        conflicts = []
+        appointments_ready = []  # Appuntamenti pronti per l'importazione (paziente trovato)
+        
+        processed_names = set()
+        
+        for apt in new_appointments:
+            full_name = f"{apt['cognome']} {apt.get('nome', '')}".strip()
+            full_name_lower = full_name.lower()
+            
+            # Cerca paziente esistente
+            patient_id = existing_patients_map.get(full_name_lower)
+            if not patient_id:
+                patient_id = existing_patients_map.get(apt['cognome'].lower().strip())
+            
+            if patient_id:
+                # Paziente trovato - pronto per importazione
+                apt["_patient_id"] = patient_id
+                appointments_ready.append(apt)
+            else:
+                # Paziente NON trovato - conflitto
+                if full_name_lower not in processed_names:
+                    processed_names.add(full_name_lower)
+                    
+                    # Trova nomi simili
+                    existing_names = set(f"{p['cognome']} {p.get('nome', '')}".strip() for p in existing_patients)
+                    similar = find_similar_names(full_name, existing_names, set(), SIMILARITY_THRESHOLD)
+                    
+                    # Conta appuntamenti per questo nome
+                    apt_count = sum(1 for a in new_appointments if f"{a['cognome']} {a.get('nome', '')}".strip().lower() == full_name_lower)
+                    dates = sorted(set(a["date"] for a in new_appointments if f"{a['cognome']} {a.get('nome', '')}".strip().lower() == full_name_lower))
+                    
+                    conflict_options = []
+                    
+                    # Aggiungi opzione "dal foglio"
+                    conflict_options.append({
+                        "name": full_name,
+                        "id": None,
+                        "from_sheet": True,
+                        "similarity": 100,
+                        "occurrences": apt_count,
+                        "dates": dates
+                    })
+                    
+                    # Aggiungi pazienti simili dal DB
+                    for name, sim in similar[:5]:
+                        patient_id_match = existing_patients_map.get(name.lower())
+                        if patient_id_match:
+                            conflict_options.append({
+                                "name": name,
+                                "id": patient_id_match,
+                                "from_sheet": False,
+                                "similarity": sim,
+                                "in_database": True
+                            })
+                    
+                    if conflict_options:
+                        conflicts.append({
+                            "id": f"conflict_{full_name_lower.replace(' ', '_')}",
+                            "sheet_name": full_name,
+                            "appointments_count": apt_count,
+                            "dates": dates,
+                            "options": conflict_options
+                        })
+        
+        return {
+            "success": True,
+            "message": f"Trovati {len(new_appointments)} nuovi appuntamenti" + (f" ({len(conflicts)} pazienti da gestire)" if conflicts else ""),
+            "new_appointments_count": len(new_appointments),
+            "ready_to_import": len(appointments_ready),
+            "conflicts_count": len(conflicts),
+            "last_sync_at": last_sync_at,
+            "total_in_sheet": len(all_appointments),
+            "sheets_processed": sheets_processed,
+            "conflicts": conflicts,
+            "has_conflicts": len(conflicts) > 0,
+            "new_appointments": [
+                {"cognome": a["cognome"], "nome": a.get("nome", ""), "date": a["date"], "ora": a.get("ora", ""), "tipo": a.get("tipo", "")}
+                for a in new_appointments[:50]  # Limita a 50 per la risposta
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Sync V2 analyze error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Errore nell'analisi: {str(e)}")
+
+def parse_sheet_data_from_list(data_rows: list, year: int, sheet_name: str) -> tuple:
+    """Parse dei dati del foglio da lista (invece che da openpyxl)"""
+    appointments = []
+    patients = set()
+    
+    if len(data_rows) < 7 or len(data_rows[0]) < 5:
+        return appointments, patients
+    
+    # Trova la data dal nome del foglio (es. "05/01" -> 2026-01-05)
+    try:
+        parts = sheet_name.split('/')
+        if len(parts) == 2:
+            day = int(parts[0])
+            month = int(parts[1])
+            base_date = datetime(year, month, day)
+        else:
+            return appointments, patients
+    except:
+        return appointments, patients
+    
+    # Riga 1 contiene le date (o i giorni della settimana)
+    # Le colonne sono: A=Ora, B=PICC Lun, C=MED Lun, D=PICC Mar, E=MED Mar, etc.
+    
+    # Mappa colonne -> (giorno_offset, tipo)
+    col_map = {}
+    header_row = data_rows[0] if data_rows else []
+    
+    for col_idx, header in enumerate(header_row):
+        header_lower = str(header).lower().strip()
+        if 'picc' in header_lower:
+            # Determina il giorno dalla posizione
+            day_offset = (col_idx - 1) // 2
+            col_map[col_idx] = (day_offset, "PICC")
+        elif 'med' in header_lower:
+            day_offset = (col_idx - 1) // 2
+            col_map[col_idx] = (day_offset, "MED")
+    
+    # Se non trovo header, uso la struttura standard
+    if not col_map:
+        # Struttura standard: B=PICC Lun, C=MED Lun, D=PICC Mar, etc.
+        for col_idx in range(1, min(13, len(header_row))):
+            day_offset = (col_idx - 1) // 2
+            tipo = "PICC" if col_idx % 2 == 1 else "MED"
+            col_map[col_idx] = (day_offset, tipo)
+    
+    # Parse righe (dalla riga 7 in poi di solito contiene gli slot orari)
+    time_slots = ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30"]
+    
+    for row_idx, row in enumerate(data_rows[6:], start=7):  # Parti dalla riga 7
+        if not row or len(row) < 2:
+            continue
+        
+        # Prima colonna è l'ora
+        ora = str(row[0]).strip() if row[0] else ""
+        if not ora or ':' not in ora:
+            # Prova a usare gli slot standard
+            if row_idx - 7 < len(time_slots):
+                ora = time_slots[row_idx - 7]
+            else:
+                continue
+        
+        # Parse delle altre colonne
+        for col_idx, cell_value in enumerate(row[1:], start=1):
+            if col_idx not in col_map:
+                continue
+            
+            cell_value = str(cell_value).strip() if cell_value else ""
+            if not cell_value or cell_value.lower() in ['', '-', 'none', 'null']:
+                continue
+            
+            day_offset, tipo = col_map[col_idx]
+            apt_date = (base_date + timedelta(days=day_offset)).strftime("%Y-%m-%d")
+            
+            # Estrai nome paziente
+            name = cell_value.strip()
+            
+            # Salta celle che sembrano intestazioni o note
+            if any(x in name.lower() for x in ['picc', 'med', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì']):
+                continue
+            
+            # Separa cognome e nome
+            parts = name.split(maxsplit=1)
+            cognome = parts[0] if parts else name
+            nome = parts[1] if len(parts) > 1 else ""
+            
+            appointments.append({
+                "cognome": cognome,
+                "nome": nome,
+                "date": apt_date,
+                "ora": ora,
+                "tipo": tipo,
+                "raw_name": name
+            })
+            
+            patients.add((cognome, nome))
+    
+    return appointments, patients
+
+@api_router.post("/sync/v2/execute")
+async def sync_v2_execute(data: dict, payload: dict = Depends(verify_token)):
+    """
+    Esegue la sincronizzazione con le scelte dell'utente per i conflitti.
+    Salva uno snapshot per le sync future.
+    """
+    ambulatorio = data.get("ambulatorio")
+    conflict_actions = data.get("conflict_actions", {})  # {sheet_name: {action: 'replace'|'create'|'ignore', patient_id: ...}}
+    
+    if ambulatorio not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    try:
+        # Ri-analizza per ottenere i dati freschi
+        credentials = GoogleCredentials.from_service_account_file(GOOGLE_CREDENTIALS_PATH, scopes=GOOGLE_SCOPES)
+        gc = gspread.authorize(credentials)
+        spreadsheet = gc.open_by_key(GOOGLE_SHEET_ID)
+        
+        year = data.get("year", datetime.now().year)
+        
+        # Ottieni ultimo snapshot
+        last_snapshot = await db.sync_snapshots.find_one(
+            {"ambulatorio": ambulatorio},
+            sort=[("sync_at", -1)]
+        )
+        last_hashes = set(last_snapshot.get("appointment_hashes", [])) if last_snapshot else set()
+        
+        # Parse fogli
+        all_appointments = []
+        
+        for ws in spreadsheet.worksheets():
+            sheet_name = ws.title
+            if not any(c.isdigit() for c in sheet_name):
+                continue
+            try:
+                data_rows = ws.get_all_values()
+                if len(data_rows) < 7:
+                    continue
+                appointments, _ = parse_sheet_data_from_list(data_rows, year, sheet_name)
+                all_appointments.extend(appointments)
+            except:
+                continue
+        
+        # Calcola hash correnti
+        current_hashes = {}
+        for apt in all_appointments:
+            h = get_appointment_hash(apt["cognome"], apt.get("nome", ""), apt["date"], apt.get("ora", ""), apt.get("tipo", ""))
+            current_hashes[h] = apt
+        
+        # Trova nuovi appuntamenti
+        new_hashes = set(current_hashes.keys()) - last_hashes
+        new_appointments = [current_hashes[h] for h in new_hashes]
+        
+        # Carica pazienti esistenti
+        existing_patients = await db.patients.find(
+            {"ambulatorio": ambulatorio},
+            {"id": 1, "cognome": 1, "nome": 1, "_id": 0}
+        ).to_list(None)
+        
+        existing_patients_map = {}
+        for p in existing_patients:
+            full_name = f"{p['cognome']} {p.get('nome', '')}".strip().lower()
+            existing_patients_map[full_name] = p["id"]
+            existing_patients_map[p['cognome'].lower().strip()] = p["id"]
+        
+        # Processa appuntamenti
+        created_appointments = 0
+        created_patients = 0
+        skipped = 0
+        
+        for apt in new_appointments:
+            full_name = f"{apt['cognome']} {apt.get('nome', '')}".strip()
+            full_name_lower = full_name.lower()
+            
+            # Cerca paziente
+            patient_id = existing_patients_map.get(full_name_lower)
+            if not patient_id:
+                patient_id = existing_patients_map.get(apt['cognome'].lower().strip())
+            
+            if not patient_id:
+                # Controlla azioni utente
+                action = conflict_actions.get(full_name, {})
+                
+                if action.get("action") == "replace" and action.get("patient_id"):
+                    patient_id = action["patient_id"]
+                elif action.get("action") == "create":
+                    # Crea nuovo paziente
+                    new_patient = {
+                        "id": str(uuid.uuid4()),
+                        "cognome": apt["cognome"],
+                        "nome": apt.get("nome", ""),
+                        "ambulatorio": ambulatorio,
+                        "tipo": apt.get("tipo", "PICC"),
+                        "status": "in_cura",
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.patients.insert_one(new_patient)
+                    patient_id = new_patient["id"]
+                    existing_patients_map[full_name_lower] = patient_id
+                    created_patients += 1
+                elif action.get("action") == "ignore":
+                    skipped += 1
+                    continue
+                else:
+                    # Nessuna azione - skip
+                    skipped += 1
+                    continue
+            
+            # Crea appuntamento
+            new_apt = {
+                "id": str(uuid.uuid4()),
+                "patient_id": patient_id,
+                "ambulatorio": ambulatorio,
+                "data": apt["date"],
+                "ora": apt.get("ora", "08:00"),
+                "tipo": apt.get("tipo", "PICC"),
+                "stato": "da_fare",
+                "note": "Importato da Google Sheets",
+                "patient_cognome": apt["cognome"],
+                "patient_nome": apt.get("nome", ""),
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Verifica che non esista già
+            existing = await db.appointments.find_one({
+                "patient_id": patient_id,
+                "data": apt["date"],
+                "ora": apt.get("ora", "08:00"),
+                "ambulatorio": ambulatorio
+            })
+            
+            if not existing:
+                await db.appointments.insert_one(new_apt)
+                created_appointments += 1
+        
+        # Salva snapshot con TUTTI gli hash attuali
+        snapshot = {
+            "id": str(uuid.uuid4()),
+            "ambulatorio": ambulatorio,
+            "sync_at": datetime.now(timezone.utc).isoformat(),
+            "sync_by": payload["sub"],
+            "appointment_hashes": list(current_hashes.keys()),
+            "total_appointments": len(all_appointments),
+            "new_appointments_imported": created_appointments,
+            "new_patients_created": created_patients,
+            "skipped": skipped
+        }
+        
+        await db.sync_snapshots.insert_one(snapshot)
+        
+        return {
+            "success": True,
+            "message": f"Sincronizzazione completata",
+            "created_appointments": created_appointments,
+            "created_patients": created_patients,
+            "skipped": skipped,
+            "snapshot_saved": True,
+            "sync_at": snapshot["sync_at"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Sync V2 execute error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Errore nella sincronizzazione: {str(e)}")
+
+@api_router.get("/sync/v2/status/{ambulatorio}")
+async def sync_v2_status(ambulatorio: str, payload: dict = Depends(verify_token)):
+    """Ottiene lo stato dell'ultima sincronizzazione"""
+    if ambulatorio not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    last_snapshot = await db.sync_snapshots.find_one(
+        {"ambulatorio": ambulatorio},
+        sort=[("sync_at", -1)]
+    )
+    
+    if not last_snapshot:
+        return {
+            "has_synced": False,
+            "message": "Nessuna sincronizzazione effettuata"
+        }
+    
+    return {
+        "has_synced": True,
+        "last_sync_at": last_snapshot["sync_at"],
+        "last_sync_by": last_snapshot.get("sync_by"),
+        "total_in_snapshot": last_snapshot.get("total_appointments", 0),
+        "last_imported": last_snapshot.get("new_appointments_imported", 0)
+    }
+
+@api_router.delete("/sync/v2/reset/{ambulatorio}")
+async def sync_v2_reset(ambulatorio: str, payload: dict = Depends(verify_token)):
+    """Resetta gli snapshot per permettere una sincronizzazione completa"""
+    if ambulatorio not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    result = await db.sync_snapshots.delete_many({"ambulatorio": ambulatorio})
+    
+    return {
+        "success": True,
+        "deleted_snapshots": result.deleted_count,
+        "message": "Snapshot eliminati. La prossima sincronizzazione analizzerà tutti gli appuntamenti."
+    }
+
 # Include the router in the main app
 app.include_router(api_router)
 
