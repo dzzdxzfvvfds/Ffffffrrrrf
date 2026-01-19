@@ -4870,6 +4870,96 @@ from collections import defaultdict
 GOOGLE_SHEET_ID = "1gO9i0IuoReM0yto7GqQlIMWjdrzDToDWJ9dQ8z0badE"
 SIMILARITY_THRESHOLD = 65  # Soglia di similarità per considerare un potenziale errore (abbassata per catturare più casi)
 
+# ============== MODELLO PER TIMESTAMP SINCRONIZZAZIONE ==============
+class SyncTimestamp(BaseModel):
+    """Salva il timestamp dell'ultima sincronizzazione per ogni ambulatorio"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    ambulatorio: str
+    last_sync_at: str  # ISO timestamp dell'ultima sincronizzazione
+    last_sync_by: str  # Username che ha effettuato la sync
+    appointments_synced: int = 0  # Numero appuntamenti sincronizzati
+    patients_synced: int = 0  # Numero pazienti sincronizzati
+
+class ManualEdit(BaseModel):
+    """Traccia le modifiche manuali fatte agli appuntamenti/pazienti importati da Sheets"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    ambulatorio: str
+    entity_type: str  # 'appointment' o 'patient'
+    entity_id: str  # ID dell'entità modificata
+    original_data: dict  # Dati originali dal foglio
+    modified_data: dict  # Dati modificati manualmente
+    modified_at: str
+    modified_by: str
+    # Identificatore univoco per riconoscere nelle sincronizzazioni future
+    sheet_identifier: str  # "cognome_nome_data_ora_tipo" per appuntamenti, "cognome_nome" per pazienti
+
+@api_router.get("/sync/timestamp/{ambulatorio}")
+async def get_sync_timestamp(ambulatorio: str, payload: dict = Depends(verify_token)):
+    """Ottiene il timestamp dell'ultima sincronizzazione"""
+    if ambulatorio not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    timestamp = await db.sync_timestamps.find_one({"ambulatorio": ambulatorio}, {"_id": 0})
+    return timestamp
+
+@api_router.post("/sync/manual-edit")
+async def save_manual_edit(
+    entity_type: str,
+    entity_id: str,
+    original_data: dict,
+    modified_data: dict,
+    ambulatorio: str,
+    payload: dict = Depends(verify_token)
+):
+    """Salva una modifica manuale per preservarla durante le sincronizzazioni future"""
+    if ambulatorio not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    # Genera identificatore univoco
+    if entity_type == "appointment":
+        sheet_identifier = f"{original_data.get('patient_cognome', '')}_{original_data.get('patient_nome', '')}_{original_data.get('data', '')}_{original_data.get('ora', '')}_{original_data.get('tipo', '')}"
+    else:  # patient
+        sheet_identifier = f"{original_data.get('cognome', '')}_{original_data.get('nome', '')}"
+    
+    sheet_identifier = sheet_identifier.lower().strip()
+    
+    manual_edit = ManualEdit(
+        ambulatorio=ambulatorio,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        original_data=original_data,
+        modified_data=modified_data,
+        modified_at=datetime.now(timezone.utc).isoformat(),
+        modified_by=payload["sub"],
+        sheet_identifier=sheet_identifier
+    )
+    
+    # Upsert: se esiste già una modifica per questa entità, aggiornala
+    await db.manual_edits.update_one(
+        {"ambulatorio": ambulatorio, "entity_id": entity_id},
+        {"$set": manual_edit.model_dump()},
+        upsert=True
+    )
+    
+    return {"success": True, "message": "Modifica manuale salvata"}
+
+@api_router.get("/sync/manual-edits/{ambulatorio}")
+async def get_manual_edits(ambulatorio: str, payload: dict = Depends(verify_token)):
+    """Ottiene tutte le modifiche manuali salvate"""
+    if ambulatorio not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    edits = await db.manual_edits.find({"ambulatorio": ambulatorio}, {"_id": 0}).to_list(None)
+    return {"edits": edits}
+
+@api_router.delete("/sync/manual-edit/{edit_id}")
+async def delete_manual_edit(edit_id: str, payload: dict = Depends(verify_token)):
+    """Elimina una modifica manuale (tornerà ai dati del foglio alla prossima sync)"""
+    result = await db.manual_edits.delete_one({"id": edit_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Modifica non trovata")
+    return {"success": True}
+
 class GoogleSheetsSyncRequest(BaseModel):
     ambulatorio: Ambulatorio
     sheet_id: Optional[str] = None
