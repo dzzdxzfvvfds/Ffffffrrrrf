@@ -6220,8 +6220,10 @@ async def analyze_google_sheets_sync(
             if "_matched_patient_id" not in apt and "_auto_create" not in apt:
                 # Questo paziente non esiste nel DB e non ha scelte precedenti
                 new_patient_names.add((apt["cognome"], apt["nome"]))
+                logger.info(f"Aggiunto a new_patient_names: '{apt['cognome']} {apt['nome']}'")
         
         logger.info(f"Nuovi pazienti (non nel DB, senza scelte precedenti): {len(new_patient_names)}")
+        logger.info(f"new_patient_names: {list(new_patient_names)[:10]}...")
         
         # STEP 5: NUOVA REGOLA - Mostra TUTTI i nuovi pazienti come "da gestire"
         # L'utente DEVE decidere manualmente: crea nuovo o sostituisci con esistente
