@@ -494,44 +494,6 @@ export default function AgendaPage() {
     });
   };
 
-  // Verifica se un nome è nella lista pending ignore
-  const isNamePendingIgnore = (name) => {
-    return pendingIgnoredNames.some(p => p.name === name);
-  };
-
-  // Carica i nomi ignorati dal database - ORA USA sync_choices
-  const loadIgnoredNames = async () => {
-    setLoadingIgnoredNames(true);
-    try {
-      const response = await apiClient.get(`/sync/choices/${ambulatorio}`);
-      // Mostra tutte le scelte, non solo gli ignorati
-      setIgnoredNamesList(response.data.choices || []);
-    } catch (error) {
-      console.error("Error loading sync choices:", error);
-      toast.error("Errore nel caricamento delle scelte salvate");
-    } finally {
-      setLoadingIgnoredNames(false);
-    }
-  };
-
-  // Rimuove una scelta (la riabilita per la prossima sync)
-  const handleRestoreIgnoredName = async (choiceId, name) => {
-    try {
-      await apiClient.delete(`/sync/choices/${choiceId}`);
-      setIgnoredNamesList(prev => prev.filter(item => item.id !== choiceId));
-      toast.success(`"${name}" tornerà nelle scelte della prossima sincronizzazione`);
-    } catch (error) {
-      console.error("Error restoring name:", error);
-      toast.error("Errore nel ripristino del nome");
-    }
-  };
-
-  // Apre il dialog del database scelte
-  const openIgnoredNamesDialog = () => {
-    setIgnoredNamesDialogOpen(true);
-    loadIgnoredNames();
-  };
-
   // Naviga alla cartella clinica del paziente
   const goToPatientFolder = (patientId) => {
     navigate(`/pazienti/${patientId}`);
