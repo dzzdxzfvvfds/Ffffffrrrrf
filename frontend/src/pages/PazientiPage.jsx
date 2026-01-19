@@ -48,8 +48,10 @@ import {
   Calendar,
   FileText,
   Hash,
+  Settings2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 
 // Prestazioni MED disponibili
 const PRESTAZIONI_MED = [
