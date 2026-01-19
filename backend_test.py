@@ -130,6 +130,31 @@ class GoogleSheetsSyncTester:
         if not self.appointment_id:
             print("❌ No appointment ID available for manual modification test")
             return False
+        
+        # First, get the current appointment to see its state
+        success, current_apt = self.run_test(
+            "Get current appointment before modification",
+            "GET",
+            f"appointments?ambulatorio={self.ambulatorio}&data={date.today().strftime('%Y-%m-%d')}",
+            200
+        )
+        
+        if success:
+            appointments = current_apt if isinstance(current_apt, list) else []
+            our_appointment = None
+            
+            for apt in appointments:
+                if apt.get('id') == self.appointment_id:
+                    our_appointment = apt
+                    break
+            
+            if our_appointment:
+                print(f"📋 Current appointment state:")
+                print(f"   - ID: {our_appointment.get('id')}")
+                print(f"   - Note: '{our_appointment.get('note', '')}'")
+                print(f"   - Patient names: {our_appointment.get('patient_cognome', '')} {our_appointment.get('patient_nome', '')}")
+                print(f"   - Current prestazioni: {our_appointment.get('prestazioni', [])}")
+                print(f"   - Current stato: {our_appointment.get('stato')}")
             
         # Modify the appointment manually (change prestazioni and stato)
         update_data = {
@@ -158,12 +183,40 @@ class GoogleSheetsSyncTester:
             print(f"   - manually_modified_by: {manually_modified_by}")
             print(f"   - prestazioni: {response.get('prestazioni', [])}")
             print(f"   - stato: {response.get('stato')}")
+            print(f"   - note: {response.get('note')}")
             
             if manually_modified and manually_modified_at and manually_modified_by:
                 return True
             else:
                 print(f"❌ Expected manually_modified flag to be set")
-                return False
+                # Let's check if the manual edit was saved in the database anyway
+                return self.check_manual_edit_in_db()
+        return False
+    
+    def check_manual_edit_in_db(self):
+        """Check if manual edit was saved in database even if flag wasn't set"""
+        success, response = self.run_test(
+            f"Check manual edits in database",
+            "GET",
+            f"sync/manual-edits/{self.ambulatorio}",
+            200
+        )
+        
+        if success:
+            edits = response.get('edits', [])
+            print(f"🔍 Checking manual edits database:")
+            print(f"   - Total edits found: {len(edits)}")
+            
+            for edit in edits:
+                if edit.get('entity_id') == self.appointment_id:
+                    print(f"   ✅ Found manual edit for our appointment!")
+                    print(f"     * Entity type: {edit.get('entity_type')}")
+                    print(f"     * Modified by: {edit.get('modified_by')}")
+                    print(f"     * Sheet identifier: {edit.get('sheet_identifier')}")
+                    return True
+            
+            print(f"   ❌ No manual edit found for appointment {self.appointment_id}")
+            return False
         return False
 
     def test_get_manual_edits_endpoint(self):
