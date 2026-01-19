@@ -5,7 +5,7 @@ import sys
 from datetime import datetime, date
 import json
 
-class AmbulatorioAPITester:
+class GoogleSheetsSyncTester:
     def __init__(self, base_url="https://syncmate-health.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.token = None
@@ -14,6 +14,7 @@ class AmbulatorioAPITester:
         self.patient_id = None
         self.appointment_id = None
         self.created_patients = []
+        self.ambulatorio = "pta_centro"
 
     def run_test(self, name, method, endpoint, expected_status, data=None, params=None):
         """Run a single API test"""
