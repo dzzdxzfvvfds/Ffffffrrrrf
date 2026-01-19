@@ -6166,7 +6166,10 @@ async def analyze_google_sheets_sync(
                     new_appointments.append(apt)
                     logger.debug(f"Nuovo appuntamento per paziente esistente: {full_name}")
             else:
-                # Paziente NON esiste - controlla se abbiamo già una scelta precedente
+                # Paziente NON esiste nel DB
+                logger.info(f"Paziente NON trovato nel DB: '{full_name}' - verrà aggiunto come conflitto o nuova richiesta")
+                
+                # Controlla se abbiamo già una scelta precedente
                 if full_name_lower in previous_choices_map:
                     prev_choice = previous_choices_map[full_name_lower]
                     # Applica la scelta precedente automaticamente
