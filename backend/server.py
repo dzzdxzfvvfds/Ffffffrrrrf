@@ -6102,6 +6102,29 @@ async def analyze_google_sheets_sync(
         
         logger.info(f"Totale appuntamenti dal foglio: {len(all_appointments)}")
         
+        # NUOVO: Carica le revisioni attive per verificare date revisionate
+        all_dates_in_sheet = set(apt["date"] for apt in all_appointments)
+        active_revisions = await db.revisions.find({
+            "ambulatorio": data.ambulatorio.value,
+            "active": True
+        }, {"_id": 0}).to_list(None)
+        
+        # Mappa date -> revisioni
+        revised_dates_map = {}
+        for rev in active_revisions:
+            from datetime import datetime as dt
+            start = dt.strptime(rev["start_date"], "%Y-%m-%d")
+            end = dt.strptime(rev["end_date"], "%Y-%m-%d")
+            current = start
+            while current <= end:
+                date_str = current.strftime("%Y-%m-%d")
+                if date_str not in revised_dates_map:
+                    revised_dates_map[date_str] = []
+                revised_dates_map[date_str].append(rev)
+                current += timedelta(days=1)
+        
+        logger.info(f"Date revisionate trovate: {len(revised_dates_map)}")
+        
         # STEP 1: Ottieni TUTTI i pazienti esistenti nel sistema
         existing_patients_list = await db.patients.find(
             {"ambulatorio": data.ambulatorio.value},
