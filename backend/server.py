@@ -5881,6 +5881,19 @@ async def analyze_google_sheets_sync(
         
         logger.info(f"Appuntamenti già sincronizzati in precedenza: {len(analyzed_keys)}")
         
+        # Carica anche le modifiche manuali (sheet_identifier) per ignorarle durante la sync
+        manual_edits = await db.manual_edits.find(
+            {"ambulatorio": data.ambulatorio.value, "entity_type": "appointment"},
+            {"sheet_identifier": 1, "_id": 0}
+        ).to_list(None)
+        
+        manual_edit_identifiers = set()
+        for me in manual_edits:
+            if me.get("sheet_identifier"):
+                manual_edit_identifiers.add(me["sheet_identifier"].lower())
+        
+        logger.info(f"Modifiche manuali da preservare: {len(manual_edit_identifiers)}")
+        
         # Scarica il foglio come XLSX
         xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
         
