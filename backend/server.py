@@ -1033,10 +1033,12 @@ async def update_appointment(appointment_id: str, data: dict, payload: dict = De
     if appointment.get("note") == "Importato da Google Sheets":
         # Controlla se ci sono modifiche significative (prestazioni, stato, note)
         significant_changes = any(key in data for key in ['prestazioni', 'stato', 'note', 'ora', 'data', 'tipo'])
+        logger.info(f"Appointment {appointment_id} - Google Sheets import detected, significant_changes: {significant_changes}")
         if significant_changes:
             data["manually_modified"] = True
             data["manually_modified_at"] = datetime.now(timezone.utc).isoformat()
             data["manually_modified_by"] = payload.get("sub", "")
+            logger.info(f"Setting manually_modified flags for appointment {appointment_id}")
             
             # Salva la modifica manuale per il tracciamento
             sheet_identifier = f"{appointment.get('patient_cognome', '')}_{appointment.get('patient_nome', '')}_{appointment.get('data', '')}_{appointment.get('ora', '')}_{appointment.get('tipo', '')}".lower()
@@ -1060,8 +1062,10 @@ async def update_appointment(appointment_id: str, data: dict, payload: dict = De
             )
             logger.info(f"Modifica manuale salvata per appuntamento {appointment_id}")
     
+    logger.info(f"Updating appointment {appointment_id} with data: {data}")
     await db.appointments.update_one({"id": appointment_id}, {"$set": data})
     updated = await db.appointments.find_one({"id": appointment_id}, {"_id": 0})
+    logger.info(f"Updated appointment {appointment_id}, manually_modified: {updated.get('manually_modified', 'NOT_SET')}")
     return updated
 
 @api_router.delete("/appointments/{appointment_id}")
