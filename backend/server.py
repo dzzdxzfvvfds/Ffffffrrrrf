@@ -5477,16 +5477,8 @@ async def sync_from_google_sheets(
                     names_to_skip.add(name.lower().strip())
                     
                     # Salva la scelta come "not_selected"
-                    sync_choice = SyncChoice(
-                        ambulatorio=data.ambulatorio.value,
-                        sync_id=current_sync_id,
-                        name=name,
-                        action="not_selected",
-                        dates=action_data.get("dates", []),
-                        created_by=payload["sub"]
-                    )
-                    await db.sync_choices.insert_one(sync_choice.model_dump())
-                    logger.info(f"Salvata scelta 'not_selected' per: {name}")
+                    # Skip questi appuntamenti (utente ha scelto di ignorarli)
+                    logger.info(f"Skip (non selezionato): {name}")
                     
                 elif action == "replace":
                     # Nome da sostituire con paziente esistente
@@ -5497,49 +5489,16 @@ async def sync_from_google_sheets(
                             "name": replace_with,
                             "id": replace_with_id
                         }
-                        
-                        # Salva la scelta
-                        sync_choice = SyncChoice(
-                            ambulatorio=data.ambulatorio.value,
-                            sync_id=current_sync_id,
-                            name=name,
-                            action="replace",
-                            replace_with=replace_with,
-                            replace_with_id=replace_with_id,
-                            dates=action_data.get("dates", []),
-                            created_by=payload["sub"]
-                        )
-                        await db.sync_choices.insert_one(sync_choice.model_dump())
-                        logger.info(f"Salvata scelta 'replace' per: {name} -> {replace_with}")
+                        logger.info(f"Sostituzione: {name} -> {replace_with}")
                         
                 elif action == "create_new":
                     # Crea nuovo paziente con questo nome
                     names_to_create.add(name.lower().strip())
-                    
-                    # Salva la scelta
-                    sync_choice = SyncChoice(
-                        ambulatorio=data.ambulatorio.value,
-                        sync_id=current_sync_id,
-                        name=name,
-                        action="create_new",
-                        dates=action_data.get("dates", []),
-                        created_by=payload["sub"]
-                    )
-                    await db.sync_choices.insert_one(sync_choice.model_dump())
-                    logger.info(f"Salvata scelta 'create_new' per: {name}")
+                    logger.info(f"Crea nuovo paziente: {name}")
                     
                 elif action == "selected":
                     # Nome selezionato - verrà gestito normalmente
-                    # Salva la scelta per riferimento
-                    sync_choice = SyncChoice(
-                        ambulatorio=data.ambulatorio.value,
-                        sync_id=current_sync_id,
-                        name=name,
-                        action="selected",
-                        dates=action_data.get("dates", []),
-                        created_by=payload["sub"]
-                    )
-                    await db.sync_choices.insert_one(sync_choice.model_dump())
+                    logger.info(f"Selezionato: {name}")
         
         # Applica anche le correzioni nomi legacy se fornite
         name_corrections = data.name_corrections or {}
