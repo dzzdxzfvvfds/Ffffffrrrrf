@@ -5619,21 +5619,6 @@ async def sync_from_google_sheets(
         
         logger.info(f"Pazienti già in DB caricati nella mappa: {len(existing_patients_in_db)}")
         
-        # IMPORTANTE: Carica anche le scelte precedenti dal DB per applicarle automaticamente
-        # Questo include le sostituzioni (replace) che sono state confermate in sincronizzazioni precedenti
-        previous_sync_choices = await db.sync_choices.find(
-            {"ambulatorio": data.ambulatorio.value},
-            {"_id": 0}
-        ).to_list(None)
-        
-        previous_choices_from_db = {}
-        for choice in previous_sync_choices:
-            name_key = choice.get("name", "").lower().strip()
-            if name_key:
-                previous_choices_from_db[name_key] = choice
-        
-        logger.info(f"Scelte precedenti caricate dal DB: {len(previous_choices_from_db)}")
-        
         # NUOVA REGOLA: NON creare pazienti automaticamente
         # L'utente deve decidere tramite "Gestisci" nel frontend
         # Qui processiamo solo pazienti:
