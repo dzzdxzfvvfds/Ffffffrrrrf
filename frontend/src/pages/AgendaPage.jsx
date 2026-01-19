@@ -956,6 +956,20 @@ export default function AgendaPage() {
             Oggi
           </Button>
 
+          {/* Contatore PICC/MED del giorno */}
+          <div className="flex items-center gap-2 px-3 py-1 bg-muted rounded-lg text-sm">
+            <div className="flex items-center gap-1">
+              <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
+              <span className="font-medium">PICC: {appointments.filter(a => a.tipo === "PICC").length}</span>
+            </div>
+            {!isVillaGinestre && (
+              <div className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                <span className="font-medium">MED: {appointments.filter(a => a.tipo === "MED").length}</span>
+              </div>
+            )}
+          </div>
+
           {/* Pulsante Chiudi Agenda */}
           <Button 
             variant="outline" 
