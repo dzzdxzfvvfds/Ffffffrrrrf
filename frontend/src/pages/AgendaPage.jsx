@@ -284,7 +284,8 @@ export default function AgendaPage() {
     loadAllPatients(); // Carica pazienti per la ricerca
     setSyncStep("analyzing");
     try {
-      const response = await apiClient.post("/sync/google-sheets/analyze", {
+      // USA NUOVO ENDPOINT V2 basato su snapshot
+      const response = await apiClient.post("/sync/v2/analyze", {
         ambulatorio,
         year: currentDate.getFullYear()
       });
@@ -296,23 +297,31 @@ export default function AgendaPage() {
           // Inizializza le scelte: pre-seleziona pazienti esistenti nel DB
           const initialChoices = {};
           response.data.conflicts.forEach(conflict => {
-            // Pre-seleziona tutti i pazienti che esistono già nel database
-            const existingPatients = conflict.options
-              .filter(opt => opt.exists_in_db)
-              .map(opt => opt.name);
-            
-            // Se nessun paziente esiste nel DB, seleziona il primo suggerito
-            if (existingPatients.length > 0) {
-              initialChoices[conflict.id] = existingPatients;
+            // Pre-seleziona il paziente dal DB se esiste
+            const dbPatient = conflict.options.find(opt => opt.in_database);
+            if (dbPatient) {
+              initialChoices[conflict.id] = [dbPatient.name];
             } else {
-              initialChoices[conflict.id] = [conflict.suggested || conflict.options[0]?.name].filter(Boolean);
+              initialChoices[conflict.id] = [conflict.options[0]?.name].filter(Boolean);
             }
           });
           setSyncConflictChoices(initialChoices);
           setSyncStep("conflicts");
+          
+          // Mostra info su ultima sync
+          if (response.data.last_sync_at) {
+            toast.info(`Ultima sync: ${new Date(response.data.last_sync_at).toLocaleString('it-IT')} - ${response.data.new_appointments_count} nuovi appuntamenti`);
+          } else {
+            toast.info(`Prima sincronizzazione - ${response.data.new_appointments_count} appuntamenti da analizzare`);
+          }
+        } else if (response.data.new_appointments_count === 0) {
+          // Nessun nuovo appuntamento
+          toast.success(response.data.message || "Nessun nuovo appuntamento dal foglio Google");
+          setSyncStep("initial");
+          setSyncDialogOpen(false);
         } else {
-          // Nessun conflitto, procedi con la sincronizzazione
-          await handleGoogleSheetsSync({});
+          // Ci sono appuntamenti pronti, nessun conflitto
+          await handleGoogleSheetsSyncV2({});
         }
       }
     } catch (error) {
@@ -324,7 +333,37 @@ export default function AgendaPage() {
     }
   };
 
-  // Sincronizza con Google Sheets - NUOVA LOGICA: Gestisci > Flag > Associa a flaggato
+  // Sincronizza con Google Sheets V2 - basato su snapshot
+  const handleGoogleSheetsSyncV2 = async (conflictActions = {}) => {
+    setSyncLoading(true);
+    setSyncStep("syncing");
+    try {
+      const response = await apiClient.post("/sync/v2/execute", {
+        ambulatorio,
+        year: currentDate.getFullYear(),
+        conflict_actions: conflictActions
+      });
+      
+      if (response.data.success) {
+        toast.success(
+          `Sincronizzazione completata: ${response.data.created_appointments} appuntamenti, ${response.data.created_patients} nuovi pazienti`
+        );
+        // Ricarica i dati e resetta tutto
+        fetchData();
+        setSyncDialogOpen(false);
+        setSyncStep("initial");
+        setSyncConflicts([]);
+        setSyncConflictChoices({});
+      }
+    } catch (error) {
+      console.error("Sync error:", error);
+      toast.error(error.response?.data?.detail || "Errore nella sincronizzazione");
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  // Sincronizza con Google Sheets - VECCHIA LOGICA (legacy)
   const handleGoogleSheetsSync = async (corrections = null) => {
     setSyncLoading(true);
     setSyncStep("syncing");
