@@ -192,6 +192,12 @@ export default function PazientiPage() {
     tipo: "",
   });
   
+  // Cambio tipo paziente (PICC/MED)
+  const [typeChangeDialogOpen, setTypeChangeDialogOpen] = useState(false);
+  const [selectedPatientForTypeChange, setSelectedPatientForTypeChange] = useState(null);
+  const [enablePicc, setEnablePicc] = useState(false);
+  const [enableMed, setEnableMed] = useState(false);
+  
   // Batch selection state
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPatients, setSelectedPatients] = useState(new Set());
