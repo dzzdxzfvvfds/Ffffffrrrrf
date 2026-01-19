@@ -6153,6 +6153,9 @@ async def analyze_google_sheets_sync(
             patient_id = find_existing_patient(apt['cognome'], apt['nome'])
             
             if patient_id:
+                # Log per debug
+                logger.debug(f"find_existing_patient('{apt['cognome']}', '{apt['nome']}') -> trovato ID: {patient_id[:8]}...")
+                
                 # Paziente esiste - verifica se l'appuntamento esiste già con patient_id
                 apt_key2 = (patient_id, apt["date"], apt["ora"])
                 if apt_key2 in existing_apt_by_patient:
