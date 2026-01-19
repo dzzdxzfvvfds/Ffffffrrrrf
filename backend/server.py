@@ -1035,7 +1035,30 @@ async def update_appointment(appointment_id: str, data: dict, payload: dict = De
         significant_changes = any(key in data for key in ['prestazioni', 'stato', 'note', 'ora', 'data', 'tipo'])
         if significant_changes:
             data["manually_modified"] = True
-            data["modified_at"] = datetime.now(timezone.utc).isoformat()
+            data["manually_modified_at"] = datetime.now(timezone.utc).isoformat()
+            data["manually_modified_by"] = payload.get("sub", "")
+            
+            # Salva la modifica manuale per il tracciamento
+            sheet_identifier = f"{appointment.get('patient_cognome', '')}_{appointment.get('patient_nome', '')}_{appointment.get('data', '')}_{appointment.get('ora', '')}_{appointment.get('tipo', '')}".lower()
+            
+            manual_edit = {
+                "id": str(uuid.uuid4()),
+                "ambulatorio": appointment["ambulatorio"],
+                "entity_type": "appointment",
+                "entity_id": appointment_id,
+                "original_data": {k: v for k, v in appointment.items() if k not in ['_id']},
+                "modified_data": data,
+                "modified_at": datetime.now(timezone.utc).isoformat(),
+                "modified_by": payload.get("sub", ""),
+                "sheet_identifier": sheet_identifier
+            }
+            
+            await db.manual_edits.update_one(
+                {"ambulatorio": appointment["ambulatorio"], "entity_id": appointment_id},
+                {"$set": manual_edit},
+                upsert=True
+            )
+            logger.info(f"Modifica manuale salvata per appuntamento {appointment_id}")
     
     await db.appointments.update_one({"id": appointment_id}, {"$set": data})
     updated = await db.appointments.find_one({"id": appointment_id}, {"_id": 0})
