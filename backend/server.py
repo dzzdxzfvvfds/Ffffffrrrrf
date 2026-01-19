@@ -6080,6 +6080,14 @@ async def analyze_google_sheets_sync(
                 logger.info(f"Skip appuntamento già sincronizzato (modificato/eliminato manualmente): {full_name} {apt['date']} {apt['ora']}")
                 continue
             
+            # NUOVO: Controlla se questo appuntamento è stato modificato manualmente
+            # Formato sheet_identifier: "cognome_nome_data_ora_tipo"
+            manual_edit_key = f"{apt['cognome']}_{apt['nome']}_{apt['date']}_{apt['ora']}_{apt['tipo']}".lower().strip()
+            if manual_edit_key in manual_edit_identifiers:
+                skipped_already_synced += 1
+                logger.info(f"Skip appuntamento con modifica manuale preservata: {full_name} {apt['date']} {apt['ora']}")
+                continue
+            
             # Cerca se il paziente esiste già
             patient_id = find_existing_patient(apt['cognome'], apt['nome'])
             
