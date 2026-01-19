@@ -11,8 +11,6 @@ const SheetTrigger = SheetPrimitive.Trigger
 
 const SheetClose = SheetPrimitive.Close
 
-const SheetPortal = SheetPrimitive.Portal
-
 const SheetOverlay = React.forwardRef(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
@@ -44,7 +42,7 @@ const sheetVariants = cva(
 )
 
 const SheetContent = React.forwardRef(({ side = "right", className, children, ...props }, ref) => (
-  <SheetPortal>
+  <SheetPrimitive.Portal container={document.body}>
     <SheetOverlay />
     <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
       <SheetPrimitive.Close
@@ -54,7 +52,7 @@ const SheetContent = React.forwardRef(({ side = "right", className, children, ..
       </SheetPrimitive.Close>
       {children}
     </SheetPrimitive.Content>
-  </SheetPortal>
+  </SheetPrimitive.Portal>
 ))
 SheetContent.displayName = SheetPrimitive.Content.displayName
 
@@ -96,7 +94,6 @@ SheetDescription.displayName = SheetPrimitive.Description.displayName
 
 export {
   Sheet,
-  SheetPortal,
   SheetOverlay,
   SheetTrigger,
   SheetClose,
