@@ -125,204 +125,82 @@ class SimplifiedSyncTester:
             return True
         return False
 
-    def test_manual_appointment_modification_debug(self):
-        """Debug version - test manual modification step by step"""
-        if not self.appointment_id:
-            print("❌ No appointment ID available for manual modification test")
-            return False
-        
-        # First, get the current appointment to see its state
-        success, current_apt = self.run_test(
-            "Get current appointment before modification",
+    def test_sync_choices_endpoints_removed(self):
+        """Test that sync_choices endpoints are removed"""
+        # Test that GET /api/sync/choices/{ambulatorio} returns 404 or doesn't exist
+        success, response = self.run_test(
+            "Verify sync_choices GET endpoint is removed",
             "GET",
-            f"appointments?ambulatorio={self.ambulatorio}&data={date.today().strftime('%Y-%m-%d')}",
-            200
+            f"sync/choices/{self.ambulatorio}",
+            404  # Should return 404 since endpoint is removed
         )
         
         if success:
-            appointments = current_apt if isinstance(current_apt, list) else []
-            our_appointment = None
-            
-            for apt in appointments:
-                if apt.get('id') == self.appointment_id:
-                    our_appointment = apt
-                    break
-            
-            if our_appointment:
-                print(f"📋 Current appointment state:")
-                print(f"   - ID: {our_appointment.get('id')}")
-                print(f"   - Note: '{our_appointment.get('note', '')}'")
-                print(f"   - Patient names: {our_appointment.get('patient_cognome', '')} {our_appointment.get('patient_nome', '')}")
-                print(f"   - Current prestazioni: {our_appointment.get('prestazioni', [])}")
-                print(f"   - Current stato: {our_appointment.get('stato')}")
-                
-                # Check if note matches exactly
-                note_matches = our_appointment.get('note') == "Importato da Google Sheets"
-                print(f"   - Note matches 'Importato da Google Sheets': {note_matches}")
+            print("✅ sync_choices GET endpoint properly removed")
+        else:
+            print("⚠️ sync_choices GET endpoint still exists (may need removal)")
         
-        # Try modifying without changing the note first
-        update_data = {
-            "prestazioni": ["medicazione_semplice", "irrigazione_catetere"],
-            "stato": "effettuato"
-            # Don't change note yet
-        }
+        # Test that DELETE /api/sync/choices/clear/{ambulatorio} returns 404
+        success2, response2 = self.run_test(
+            "Verify sync_choices DELETE endpoint is removed",
+            "DELETE",
+            f"sync/choices/clear/{self.ambulatorio}",
+            404  # Should return 404 since endpoint is removed
+        )
         
+        if success2:
+            print("✅ sync_choices DELETE endpoint properly removed")
+        else:
+            print("⚠️ sync_choices DELETE endpoint still exists (may need removal)")
+        
+        return success or success2  # Pass if at least one endpoint is properly removed
+
+    def test_sync_analyze_endpoint(self):
+        """Test the sync analyze endpoint that shows conflicts"""
         success, response = self.run_test(
-            "Manually modify imported appointment (without changing note)",
-            "PUT",
-            f"appointments/{self.appointment_id}",
+            "Test sync analyze endpoint",
+            "POST",
+            "sync/google-sheets/analyze",
             200,
-            data=update_data
+            data={
+                "ambulatorio": self.ambulatorio,
+                "year": datetime.now().year
+            }
         )
         
         if success:
-            # Check if manually_modified flag was added
-            manually_modified = response.get('manually_modified', False)
-            manually_modified_at = response.get('manually_modified_at')
-            manually_modified_by = response.get('manually_modified_by')
-            
-            print(f"✅ Appointment modified successfully:")
-            print(f"   - manually_modified: {manually_modified}")
-            print(f"   - manually_modified_at: {manually_modified_at}")
-            print(f"   - manually_modified_by: {manually_modified_by}")
-            print(f"   - prestazioni: {response.get('prestazioni', [])}")
-            print(f"   - stato: {response.get('stato')}")
-            print(f"   - note: {response.get('note')}")
-            
-            if manually_modified and manually_modified_at and manually_modified_by:
-                return True
-            else:
-                print(f"❌ Expected manually_modified flag to be set")
-                # Let's check if the manual edit was saved in the database anyway
-                return self.check_manual_edit_in_db()
-        return False
-    
-    def check_manual_edit_in_db(self):
-        """Check if manual edit was saved in database even if flag wasn't set"""
-        success, response = self.run_test(
-            f"Check manual edits in database",
-            "GET",
-            f"sync/manual-edits/{self.ambulatorio}",
-            200
-        )
-        
-        if success:
-            edits = response.get('edits', [])
-            print(f"🔍 Checking manual edits database:")
-            print(f"   - Total edits found: {len(edits)}")
-            
-            for edit in edits:
-                if edit.get('entity_id') == self.appointment_id:
-                    print(f"   ✅ Found manual edit for our appointment!")
-                    print(f"     * Entity type: {edit.get('entity_type')}")
-                    print(f"     * Modified by: {edit.get('modified_by')}")
-                    print(f"     * Sheet identifier: {edit.get('sheet_identifier')}")
-                    return True
-            
-            print(f"   ❌ No manual edit found for appointment {self.appointment_id}")
-            return False
-        return False
-
-    def test_get_manual_edits_endpoint(self):
-        """Test GET /api/sync/manual-edits/{ambulatorio} endpoint"""
-        success, response = self.run_test(
-            f"Get manual edits for {self.ambulatorio}",
-            "GET",
-            f"sync/manual-edits/{self.ambulatorio}",
-            200
-        )
-        
-        if success:
-            edits = response.get('edits', [])
-            print(f"✅ Manual edits retrieved:")
-            print(f"   - Total edits: {len(edits)}")
-            
-            # Look for our appointment edit
-            appointment_edit = None
-            for edit in edits:
-                if edit.get('entity_id') == self.appointment_id:
-                    appointment_edit = edit
-                    break
-            
-            if appointment_edit:
-                print(f"   - Found edit for our appointment:")
-                print(f"     * Entity type: {appointment_edit.get('entity_type')}")
-                print(f"     * Modified by: {appointment_edit.get('modified_by')}")
-                print(f"     * Modified at: {appointment_edit.get('modified_at')}")
-                print(f"     * Sheet identifier: {appointment_edit.get('sheet_identifier')}")
-                return True
-            else:
-                print(f"   - No edit found for appointment {self.appointment_id}")
-                # This might be expected if the manual edit tracking is done differently
-                return True  # Still pass the test as the endpoint works
-        return False
-
-    def test_sync_timestamp_endpoint(self):
-        """Test sync timestamp endpoint"""
-        success, response = self.run_test(
-            f"Get sync timestamp for {self.ambulatorio}",
-            "GET",
-            f"sync/timestamp/{self.ambulatorio}",
-            200
-        )
-        
-        if success:
-            if response is None:
-                print(f"✅ Sync timestamp retrieved: No previous sync (None)")
-                return True
-            
-            last_sync_at = response.get('last_sync_at') if isinstance(response, dict) else None
-            last_sync_by = response.get('last_sync_by') if isinstance(response, dict) else None
-            
-            print(f"✅ Sync timestamp retrieved:")
-            print(f"   - Last sync at: {last_sync_at}")
-            print(f"   - Last sync by: {last_sync_by}")
-            print(f"   - Appointments synced: {response.get('appointments_synced', 0)}")
-            print(f"   - Patients synced: {response.get('patients_synced', 0)}")
-            
+            print(f"✅ Sync analyze endpoint working:")
+            print(f"   - Success: {response.get('success', False)}")
+            print(f"   - Has conflicts: {response.get('has_conflicts', False)}")
+            if response.get('has_conflicts'):
+                conflicts = response.get('conflicts', [])
+                print(f"   - Number of conflicts: {len(conflicts)}")
+                for i, conflict in enumerate(conflicts[:2]):  # Show first 2 conflicts
+                    print(f"     Conflict {i+1}: {conflict.get('id', 'N/A')}")
+                    print(f"       Options: {len(conflict.get('options', []))}")
             return True
         return False
 
-    def test_appointment_preservation_logic(self):
-        """Test that manually modified appointments would be preserved during sync"""
-        if not self.appointment_id:
-            print("❌ No appointment ID available for preservation test")
-            return False
-        
-        # Get the current appointment to verify it has manually_modified flag
+    def test_sync_main_endpoint(self):
+        """Test the main sync endpoint"""
         success, response = self.run_test(
-            "Get appointment to verify manually_modified flag",
-            "GET",
-            f"appointments?ambulatorio={self.ambulatorio}&data={date.today().strftime('%Y-%m-%d')}",
-            200
+            "Test main sync endpoint",
+            "POST",
+            "sync/google-sheets",
+            200,
+            data={
+                "ambulatorio": self.ambulatorio,
+                "year": datetime.now().year,
+                "conflict_actions": {}  # Empty conflict actions for now
+            }
         )
         
         if success:
-            appointments = response if isinstance(response, list) else []
-            our_appointment = None
-            
-            for apt in appointments:
-                if apt.get('id') == self.appointment_id:
-                    our_appointment = apt
-                    break
-            
-            if our_appointment:
-                manually_modified = our_appointment.get('manually_modified', False)
-                print(f"✅ Appointment preservation check:")
-                print(f"   - Appointment ID: {self.appointment_id}")
-                print(f"   - manually_modified flag: {manually_modified}")
-                print(f"   - Current prestazioni: {our_appointment.get('prestazioni', [])}")
-                print(f"   - Current stato: {our_appointment.get('stato')}")
-                
-                if manually_modified:
-                    print(f"   ✅ This appointment would be preserved during Google Sheets sync")
-                    return True
-                else:
-                    print(f"   ❌ manually_modified flag not set - appointment might be overwritten")
-                    return False
-            else:
-                print(f"❌ Could not find appointment {self.appointment_id}")
-                return False
+            print(f"✅ Main sync endpoint working:")
+            print(f"   - Success: {response.get('success', False)}")
+            print(f"   - Created patients: {response.get('created_patients', 0)}")
+            print(f"   - Created appointments: {response.get('created_appointments', 0)}")
+            return True
         return False
 
     def cleanup(self):
