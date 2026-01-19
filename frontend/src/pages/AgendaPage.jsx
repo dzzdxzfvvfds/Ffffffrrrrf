@@ -1012,6 +1012,26 @@ export default function AgendaPage() {
             )}
           </div>
 
+          {/* Indicatore revisione attiva */}
+          {activeRevisions.length > 0 && (
+            <div className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs font-medium">
+              <CheckCircle className="w-3 h-3" />
+              Revisionato
+            </div>
+          )}
+
+          {/* Pulsante Revisiona */}
+          <Button 
+            variant={activeRevisions.length > 0 ? "secondary" : "outline"}
+            size="sm" 
+            onClick={() => setRevisionDialogOpen(true)}
+            className={activeRevisions.length > 0 ? "text-purple-700" : "text-purple-600 border-purple-300 hover:bg-purple-50"}
+            data-testid="revision-btn"
+          >
+            <CheckCircle className="w-4 h-4 mr-2" />
+            {activeRevisions.length > 0 ? "Gestisci Revisione" : "Revisiona"}
+          </Button>
+
           {/* Pulsante Chiudi Agenda */}
           <Button 
             variant="outline" 
