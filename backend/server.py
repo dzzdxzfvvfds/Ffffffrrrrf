@@ -6190,24 +6190,9 @@ async def analyze_google_sheets_sync(
                     new_appointments.append(apt)
                     logger.debug(f"Nuovo appuntamento per paziente esistente: {full_name}")
             else:
-                # Paziente NON esiste nel DB
-                logger.info(f"Paziente NON trovato nel DB: '{full_name}' - verrà aggiunto come conflitto o nuova richiesta")
-                
-                # Controlla se abbiamo già una scelta precedente
-                if full_name_lower in previous_choices_map:
-                    prev_choice = previous_choices_map[full_name_lower]
-                    logger.info(f"Trovata scelta precedente per '{full_name}': {prev_choice.get('action')}")
-                    # Applica la scelta precedente automaticamente
-                    if prev_choice["action"] == "not_selected":
-                        # Questo nome è stato ignorato in precedenza - skip
-                        skipped_previous_choices += 1
-                        logger.debug(f"Skip nome ignorato in precedenza: {full_name}")
-                        continue
-                    elif prev_choice["action"] == "replace" and prev_choice.get("replace_with_id"):
-                        # Questo nome deve essere sostituito
-                        apt["_matched_patient_id"] = prev_choice["replace_with_id"]
-                        apt["_replaced_from"] = full_name
-                        new_appointments.append(apt)
+                # Paziente NON esiste nel DB - sarà mostrato come conflitto per chiedere all'utente
+                logger.info(f"Paziente NON trovato nel DB: '{full_name}' - sarà mostrato come conflitto")
+                new_appointments.append(apt)
                         logger.debug(f"Applicata sostituzione precedente: {full_name} -> {prev_choice.get('replace_with')}")
                         continue
                     elif prev_choice["action"] in ["selected", "create_new"]:
