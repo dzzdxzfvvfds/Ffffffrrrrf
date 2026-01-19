@@ -6916,12 +6916,16 @@ async def sync_v2_analyze(data: GoogleSheetsSyncRequest, payload: dict = Depends
                     dates = sorted(set(a["date"] for a in new_appointments if f"{a['cognome']} {a.get('nome', '')}".strip().lower() == full_name_lower))
                     
                     conflict_options = []
+                    has_existing_patient = False
                     
                     # Aggiungi opzione "dal foglio"
                     conflict_options.append({
                         "name": full_name,
                         "id": None,
                         "from_sheet": True,
+                        "exists_in_db": False,
+                        "in_database": False,
+                        "source": "foglio",
                         "similarity": 100,
                         "occurrences": apt_count,
                         "dates": dates
@@ -6933,18 +6937,26 @@ async def sync_v2_analyze(data: GoogleSheetsSyncRequest, payload: dict = Depends
                         sim = item[1]
                         patient_id_match = existing_patients_map.get(name.lower())
                         if patient_id_match:
+                            has_existing_patient = True
                             conflict_options.append({
                                 "name": name,
                                 "id": patient_id_match,
                                 "from_sheet": False,
+                                "exists_in_db": True,
+                                "in_database": True,
+                                "source": "database",
                                 "similarity": sim,
-                                "in_database": True
+                                "occurrences": 0,
+                                "dates": []
                             })
                     
                     if conflict_options:
                         conflicts.append({
                             "id": f"conflict_{full_name_lower.replace(' ', '_')}",
                             "sheet_name": full_name,
+                            "reason": f"Paziente '{full_name}' non trovato nel database",
+                            "has_existing_patient": has_existing_patient,
+                            "suggested": conflict_options[0]["name"] if not has_existing_patient else next((o["name"] for o in conflict_options if o.get("exists_in_db")), None),
                             "appointments_count": apt_count,
                             "dates": dates,
                             "options": conflict_options
