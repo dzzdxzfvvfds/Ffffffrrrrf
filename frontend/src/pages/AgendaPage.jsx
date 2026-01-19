@@ -1788,7 +1788,7 @@ export default function AgendaPage() {
                                   {option.occurrences > 0 && (
                                     <span>{option.occurrences} appuntamenti nel foglio • </span>
                                   )}
-                                  {option.dates.length > 0 && (
+                                  {option.dates?.length > 0 && (
                                     <span>Date: {option.dates.slice(0, 3).join(", ")}{option.dates.length > 3 ? "..." : ""}</span>
                                   )}
                                   {option.tipos?.length > 0 && (
