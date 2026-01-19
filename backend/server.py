@@ -5693,11 +5693,17 @@ async def sync_from_google_sheets(
                 full_name = f"{cognome} {nome}".strip()
                 full_name_lower = full_name.lower()
                 
+                # Prima controlla le azioni dalla richiesta attuale (hanno priorità)
                 action_for_name = None
                 for name_key, action_data in conflict_actions.items():
                     if name_key.lower().strip() == full_name_lower:
                         action_for_name = action_data
                         break
+                
+                # Se non trovata nella richiesta, controlla le scelte precedenti dal DB
+                if not action_for_name and full_name_lower in previous_choices_from_db:
+                    action_for_name = previous_choices_from_db[full_name_lower]
+                    logger.info(f"Usando scelta precedente per '{full_name}': {action_for_name.get('action')}")
                 
                 if action_for_name and action_for_name.get("action") in ["create_new", "selected"]:
                     # L'utente ha esplicitamente chiesto di creare questo paziente
