@@ -1024,6 +1024,224 @@ async def get_appointments(
     
     return appointments
 
+# ============== CONTEGGI GIORNALIERI PICC/MED ==============
+@api_router.get("/appointments/daily-counts")
+async def get_daily_counts(
+    ambulatorio: str,
+    start_date: str,
+    end_date: str,
+    payload: dict = Depends(verify_token)
+):
+    """Ottiene i conteggi di appuntamenti PICC e MED per ogni giorno nel range"""
+    if ambulatorio not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    pipeline = [
+        {
+            "$match": {
+                "ambulatorio": ambulatorio,
+                "data": {"$gte": start_date, "$lte": end_date}
+            }
+        },
+        {
+            "$group": {
+                "_id": {"data": "$data", "tipo": "$tipo"},
+                "count": {"$sum": 1}
+            }
+        }
+    ]
+    
+    results = await db.appointments.aggregate(pipeline).to_list(None)
+    
+    # Organizza i risultati per data
+    counts_by_date = {}
+    for r in results:
+        data = r["_id"]["data"]
+        tipo = r["_id"]["tipo"]
+        if data not in counts_by_date:
+            counts_by_date[data] = {"PICC": 0, "MED": 0, "total": 0}
+        counts_by_date[data][tipo] = r["count"]
+        counts_by_date[data]["total"] += r["count"]
+    
+    return {"counts": counts_by_date}
+
+# ============== SISTEMA DI REVISIONE MANUALE ==============
+class RevisionScope(str, Enum):
+    PATIENT = "patient"          # Singolo paziente
+    SLOT = "slot"                # Singolo slot (ora + tipo)
+    DAY_PICC = "day_picc"        # Tutti i PICC del giorno
+    DAY_MED = "day_med"          # Tutti i MED del giorno
+    DAY = "day"                  # Intero giorno
+    WEEK = "week"                # Intera settimana
+    MONTH = "month"              # Intero mese
+
+class RevisionCreate(BaseModel):
+    ambulatorio: str
+    scope: RevisionScope
+    date: str  # Data di riferimento (formato YYYY-MM-DD)
+    patient_id: Optional[str] = None  # Solo per scope=PATIENT
+    slot_ora: Optional[str] = None    # Solo per scope=SLOT
+    slot_tipo: Optional[str] = None   # Solo per scope=SLOT (PICC o MED)
+    notes: Optional[str] = None
+
+class Revision(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    ambulatorio: str
+    scope: str
+    date: str
+    start_date: str  # Data inizio periodo revisionato
+    end_date: str    # Data fine periodo revisionato
+    patient_id: Optional[str] = None
+    slot_ora: Optional[str] = None
+    slot_tipo: Optional[str] = None
+    notes: Optional[str] = None
+    revised_by: str
+    revised_at: str
+    active: bool = True  # False se la revisione è stata annullata
+
+@api_router.post("/revisions")
+async def create_revision(data: RevisionCreate, payload: dict = Depends(verify_token)):
+    """Crea una nuova revisione manuale"""
+    if data.ambulatorio not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    from datetime import datetime as dt
+    
+    # Calcola il range di date in base allo scope
+    ref_date = dt.strptime(data.date, "%Y-%m-%d")
+    
+    if data.scope == RevisionScope.PATIENT:
+        if not data.patient_id:
+            raise HTTPException(status_code=400, detail="patient_id richiesto per scope PATIENT")
+        start_date = data.date
+        end_date = data.date
+    elif data.scope == RevisionScope.SLOT:
+        if not data.slot_ora or not data.slot_tipo:
+            raise HTTPException(status_code=400, detail="slot_ora e slot_tipo richiesti per scope SLOT")
+        start_date = data.date
+        end_date = data.date
+    elif data.scope in [RevisionScope.DAY_PICC, RevisionScope.DAY_MED, RevisionScope.DAY]:
+        start_date = data.date
+        end_date = data.date
+    elif data.scope == RevisionScope.WEEK:
+        # Trova lunedì della settimana
+        weekday = ref_date.weekday()
+        monday = ref_date - timedelta(days=weekday)
+        sunday = monday + timedelta(days=6)
+        start_date = monday.strftime("%Y-%m-%d")
+        end_date = sunday.strftime("%Y-%m-%d")
+    elif data.scope == RevisionScope.MONTH:
+        # Primo e ultimo giorno del mese
+        start_date = ref_date.replace(day=1).strftime("%Y-%m-%d")
+        # Ultimo giorno del mese
+        next_month = ref_date.replace(day=28) + timedelta(days=4)
+        last_day = next_month - timedelta(days=next_month.day)
+        end_date = last_day.strftime("%Y-%m-%d")
+    else:
+        start_date = data.date
+        end_date = data.date
+    
+    revision = Revision(
+        ambulatorio=data.ambulatorio,
+        scope=data.scope.value,
+        date=data.date,
+        start_date=start_date,
+        end_date=end_date,
+        patient_id=data.patient_id,
+        slot_ora=data.slot_ora,
+        slot_tipo=data.slot_tipo,
+        notes=data.notes,
+        revised_by=payload["sub"],
+        revised_at=datetime.now(timezone.utc).isoformat()
+    )
+    
+    await db.revisions.insert_one(revision.model_dump())
+    
+    return {"success": True, "revision": revision.model_dump(), "message": f"Revisione creata per {data.scope.value}"}
+
+@api_router.get("/revisions")
+async def get_revisions(
+    ambulatorio: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    payload: dict = Depends(verify_token)
+):
+    """Ottiene le revisioni attive per un ambulatorio"""
+    if ambulatorio not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    query = {"ambulatorio": ambulatorio, "active": True}
+    
+    # Filtra per date se specificate
+    if start_date and end_date:
+        query["$or"] = [
+            {"start_date": {"$lte": end_date}, "end_date": {"$gte": start_date}},
+        ]
+    
+    revisions = await db.revisions.find(query, {"_id": 0}).to_list(None)
+    return {"revisions": revisions}
+
+@api_router.delete("/revisions/{revision_id}")
+async def delete_revision(revision_id: str, payload: dict = Depends(verify_token)):
+    """Annulla una revisione"""
+    revision = await db.revisions.find_one({"id": revision_id}, {"_id": 0})
+    if not revision:
+        raise HTTPException(status_code=404, detail="Revisione non trovata")
+    if revision["ambulatorio"] not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    await db.revisions.update_one({"id": revision_id}, {"$set": {"active": False}})
+    return {"success": True, "message": "Revisione annullata"}
+
+@api_router.get("/revisions/check")
+async def check_revisions(
+    ambulatorio: str,
+    dates: str,  # Comma-separated list of dates
+    payload: dict = Depends(verify_token)
+):
+    """Verifica quali date hanno revisioni attive"""
+    if ambulatorio not in payload["ambulatori"]:
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
+    
+    date_list = [d.strip() for d in dates.split(",")]
+    
+    # Trova tutte le revisioni che coprono queste date
+    revisions = await db.revisions.find({
+        "ambulatorio": ambulatorio,
+        "active": True,
+        "$or": [
+            {"start_date": {"$in": date_list}},
+            {"end_date": {"$in": date_list}},
+            {"$and": [
+                {"start_date": {"$lte": max(date_list)}},
+                {"end_date": {"$gte": min(date_list)}}
+            ]}
+        ]
+    }, {"_id": 0}).to_list(None)
+    
+    # Mappa date -> revisioni
+    revised_dates = {}
+    for rev in revisions:
+        # Genera tutte le date nel range
+        from datetime import datetime as dt
+        start = dt.strptime(rev["start_date"], "%Y-%m-%d")
+        end = dt.strptime(rev["end_date"], "%Y-%m-%d")
+        current = start
+        while current <= end:
+            date_str = current.strftime("%Y-%m-%d")
+            if date_str in date_list:
+                if date_str not in revised_dates:
+                    revised_dates[date_str] = []
+                revised_dates[date_str].append({
+                    "id": rev["id"],
+                    "scope": rev["scope"],
+                    "slot_tipo": rev.get("slot_tipo"),
+                    "patient_id": rev.get("patient_id")
+                })
+            current += timedelta(days=1)
+    
+    return {"revised_dates": revised_dates}
+
 @api_router.put("/appointments/{appointment_id}", response_model=Appointment)
 async def update_appointment(appointment_id: str, data: dict, payload: dict = Depends(verify_token)):
     appointment = await db.appointments.find_one({"id": appointment_id}, {"_id": 0})
