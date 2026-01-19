@@ -368,7 +368,7 @@ def main():
             print("❌ Appointment creation (simulating Google Sheets import) failed")
             return 1
 
-        if not tester.test_manual_appointment_modification():
+        if not tester.test_manual_appointment_modification_debug():
             print("❌ Manual appointment modification failed")
             return 1
 
