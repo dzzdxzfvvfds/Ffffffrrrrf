@@ -2366,6 +2366,145 @@ export default function AgendaPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog Revisione Manuale */}
+      <Dialog open={revisionDialogOpen} onOpenChange={setRevisionDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-purple-600" />
+              Revisione Manuale
+            </DialogTitle>
+            <DialogDescription>
+              Segna come revisionato per proteggere da modifiche automatiche durante le sincronizzazioni future.
+              <br />
+              <span className="font-medium">Data: {format(currentDate, "d MMMM yyyy", { locale: it })}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            {activeRevisions.length > 0 ? (
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <p className="text-sm text-purple-800 font-medium mb-2">
+                  ✓ Questa data è già stata revisionata
+                </p>
+                <p className="text-xs text-purple-600 mb-3">
+                  Gli appuntamenti in questa data sono protetti. Se il foglio Google viene modificato,
+                  ti verrà chiesto cosa fare prima di aggiungere nuovi appuntamenti.
+                </p>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="text-purple-600 border-purple-300"
+                  onClick={() => {
+                    if (activeRevisions[0]?.id) {
+                      deleteRevision(activeRevisions[0].id);
+                    }
+                  }}
+                >
+                  Annulla Revisione
+                </Button>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Scegli cosa vuoi revisionare:
+                </p>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                    <input 
+                      type="radio" 
+                      name="revisionScope" 
+                      value="day"
+                      checked={revisionScope === "day"}
+                      onChange={(e) => setRevisionScope(e.target.value)}
+                      className="w-4 h-4 text-purple-600"
+                    />
+                    <div>
+                      <p className="font-medium">Giorno intero</p>
+                      <p className="text-xs text-muted-foreground">Protegge tutti gli appuntamenti PICC e MED del giorno</p>
+                    </div>
+                  </label>
+                  
+                  <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                    <input 
+                      type="radio" 
+                      name="revisionScope" 
+                      value="day_picc"
+                      checked={revisionScope === "day_picc"}
+                      onChange={(e) => setRevisionScope(e.target.value)}
+                      className="w-4 h-4 text-purple-600"
+                    />
+                    <div>
+                      <p className="font-medium">Solo PICC del giorno</p>
+                      <p className="text-xs text-muted-foreground">Protegge solo gli appuntamenti PICC</p>
+                    </div>
+                  </label>
+
+                  {!isVillaGinestre && (
+                    <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                      <input 
+                        type="radio" 
+                        name="revisionScope" 
+                        value="day_med"
+                        checked={revisionScope === "day_med"}
+                        onChange={(e) => setRevisionScope(e.target.value)}
+                        className="w-4 h-4 text-purple-600"
+                      />
+                      <div>
+                        <p className="font-medium">Solo MED del giorno</p>
+                        <p className="text-xs text-muted-foreground">Protegge solo gli appuntamenti MED</p>
+                      </div>
+                    </label>
+                  )}
+
+                  <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                    <input 
+                      type="radio" 
+                      name="revisionScope" 
+                      value="week"
+                      checked={revisionScope === "week"}
+                      onChange={(e) => setRevisionScope(e.target.value)}
+                      className="w-4 h-4 text-purple-600"
+                    />
+                    <div>
+                      <p className="font-medium">Settimana intera</p>
+                      <p className="text-xs text-muted-foreground">Protegge tutta la settimana contenente questa data</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                    <input 
+                      type="radio" 
+                      name="revisionScope" 
+                      value="month"
+                      checked={revisionScope === "month"}
+                      onChange={(e) => setRevisionScope(e.target.value)}
+                      className="w-4 h-4 text-purple-600"
+                    />
+                    <div>
+                      <p className="font-medium">Mese intero</p>
+                      <p className="text-xs text-muted-foreground">Protegge tutto il mese</p>
+                    </div>
+                  </label>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setRevisionDialogOpen(false)}>
+              {activeRevisions.length > 0 ? "Chiudi" : "Annulla"}
+            </Button>
+            {activeRevisions.length === 0 && (
+              <Button onClick={createRevision} className="bg-purple-600 hover:bg-purple-700">
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Conferma Revisione
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
