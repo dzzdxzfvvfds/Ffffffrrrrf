@@ -6193,21 +6193,9 @@ async def analyze_google_sheets_sync(
                 # Paziente NON esiste nel DB - sarà mostrato come conflitto per chiedere all'utente
                 logger.info(f"Paziente NON trovato nel DB: '{full_name}' - sarà mostrato come conflitto")
                 new_appointments.append(apt)
-                        logger.debug(f"Applicata sostituzione precedente: {full_name} -> {prev_choice.get('replace_with')}")
-                        continue
-                    elif prev_choice["action"] in ["selected", "create_new"]:
-                        # Crea nuovo paziente - aggiungi senza conflitto
-                        apt["_auto_create"] = True
-                        new_appointments.append(apt)
-                        continue
-                else:
-                    logger.info(f"Nessuna scelta precedente per '{full_name}' - sarà mostrato come conflitto")
-                
-                # Nessuna scelta precedente - potrebbe essere un conflitto
-                new_appointments.append(apt)
         
         logger.info(f"Nuovi appuntamenti da processare: {len(new_appointments)}")
-        logger.info(f"Skip: esistenti={skipped_existing}, già_sync={skipped_already_synced}, scelte_prec={skipped_previous_choices}")
+        logger.info(f"Skip: esistenti={skipped_existing}, già_sync={skipped_already_synced}")
         
         # Se non ci sono nuovi appuntamenti
         if not new_appointments:
@@ -6222,11 +6210,10 @@ async def analyze_google_sheets_sync(
                 "existing_patients_count": len(existing_patients_list),
                 "skipped_existing": skipped_existing,
                 "skipped_already_synced": skipped_already_synced,
-                "skipped_previous_choices": skipped_previous_choices,
                 "message": "Nessun nuovo appuntamento da importare. Il sistema è già aggiornato."
             }
         
-        # STEP 4: Trova nomi dei NUOVI pazienti (quelli senza match nel DB e senza scelta automatica)
+        # STEP 4: Trova nomi dei NUOVI pazienti (quelli senza match nel DB)
         new_patient_names = set()
         for apt in new_appointments:
             if "_matched_patient_id" not in apt and "_auto_create" not in apt:
