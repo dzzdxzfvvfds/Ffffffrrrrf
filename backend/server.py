@@ -5896,6 +5896,48 @@ async def sync_from_google_sheets(
                     # L'utente vuole sostituire con paziente esistente
                     patient_id_map[(cognome, nome)] = action_for_name["replace_with_id"]
                     logger.info(f"Sostituito {cognome} {nome} con paziente ID {action_for_name['replace_with_id']}")
+                    
+                    # SALVA l'associazione nome per le sync future
+                    # Così la prossima volta che vediamo questo nome nel foglio, sappiamo già a chi associarlo
+                    await db.name_mappings.update_one(
+                        {
+                            "ambulatorio": data.ambulatorio.value,
+                            "sheet_name": f"{cognome} {nome}".strip().lower()
+                        },
+                        {
+                            "$set": {
+                                "ambulatorio": data.ambulatorio.value,
+                                "sheet_name": f"{cognome} {nome}".strip().lower(),
+                                "patient_id": action_for_name["replace_with_id"],
+                                "patient_name": action_for_name.get("replace_with", ""),
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                                "created_by": payload.get("sub", "")
+                            }
+                        },
+                        upsert=True
+                    )
+                    logger.info(f"Salvata associazione nome: '{cognome} {nome}' -> paziente {action_for_name.get('replace_with', '')}")
+                    
+                elif action_for_name and action_for_name.get("action") == "not_selected":
+                    # L'utente vuole ignorare questo nome - salva per non chiederlo più
+                    await db.name_mappings.update_one(
+                        {
+                            "ambulatorio": data.ambulatorio.value,
+                            "sheet_name": f"{cognome} {nome}".strip().lower()
+                        },
+                        {
+                            "$set": {
+                                "ambulatorio": data.ambulatorio.value,
+                                "sheet_name": f"{cognome} {nome}".strip().lower(),
+                                "patient_id": None,
+                                "action": "ignore",
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                                "created_by": payload.get("sub", "")
+                            }
+                        },
+                        upsert=True
+                    )
+                    logger.info(f"Nome ignorato salvato: '{cognome} {nome}'")
                 else:
                     # NESSUNA azione esplicita - NON creare paziente
                     # L'appuntamento verrà skippato nella fase successiva
