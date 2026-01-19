@@ -2055,7 +2055,35 @@ export default function AgendaPage() {
                     Annulla
                   </Button>
                   <Button 
-                    onClick={() => handleGoogleSheetsSync()}
+                    onClick={() => {
+                      // Costruisci le azioni per i conflitti
+                      const actions = {};
+                      syncConflicts.forEach(conflict => {
+                        const chosenNames = syncConflictChoices[conflict.id] || [];
+                        const selectedOption = conflict.options.find(opt => chosenNames.includes(opt.name));
+                        
+                        if (selectedOption) {
+                          if (selectedOption.in_database && selectedOption.id) {
+                            // Sostituisci con paziente esistente
+                            actions[conflict.sheet_name] = {
+                              action: "replace",
+                              patient_id: selectedOption.id
+                            };
+                          } else if (selectedOption.from_sheet) {
+                            // Crea nuovo paziente
+                            actions[conflict.sheet_name] = {
+                              action: "create"
+                            };
+                          }
+                        } else {
+                          // Ignora
+                          actions[conflict.sheet_name] = {
+                            action: "ignore"
+                          };
+                        }
+                      });
+                      handleGoogleSheetsSyncV2(actions);
+                    }}
                     disabled={syncLoading}
                     className="bg-blue-600 hover:bg-blue-700"
                   >
