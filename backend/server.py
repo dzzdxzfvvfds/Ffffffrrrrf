@@ -6330,51 +6330,6 @@ async def analyze_google_sheets_sync(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Errore nell'analisi: {str(e)}")
 
-# Endpoint per ottenere le scelte di sincronizzazione
-@api_router.get("/sync/choices/{ambulatorio}")
-async def get_sync_choices(ambulatorio: str, payload: dict = Depends(verify_token)):
-    """Ottiene tutte le scelte di sincronizzazione per un ambulatorio"""
-    if ambulatorio not in payload["ambulatori"]:
-        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
-    
-    choices = await db.sync_choices.find(
-        {"ambulatorio": ambulatorio},
-        {"_id": 0}
-    ).sort("created_at", -1).to_list(None)
-    
-    return {"choices": choices}
-
-@api_router.delete("/sync/choices/{choice_id}")
-async def delete_sync_choice(choice_id: str, payload: dict = Depends(verify_token)):
-    """Elimina una scelta di sincronizzazione"""
-    choice = await db.sync_choices.find_one({"id": choice_id})
-    
-    if not choice:
-        raise HTTPException(status_code=404, detail="Scelta non trovata")
-    
-    if choice["ambulatorio"] not in payload["ambulatori"]:
-        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
-    
-    await db.sync_choices.delete_one({"id": choice_id})
-    return {"success": True, "message": f"Scelta per '{choice['name']}' eliminata"}
-
-@api_router.delete("/sync/choices/clear/{ambulatorio}")
-async def clear_sync_choices(ambulatorio: str, payload: dict = Depends(verify_token)):
-    """Elimina tutte le scelte per un ambulatorio"""
-    if ambulatorio not in payload["ambulatori"]:
-        raise HTTPException(status_code=403, detail="Non hai accesso a questo ambulatorio")
-    
-    result = await db.sync_choices.delete_many({"ambulatorio": ambulatorio})
-    
-    # Elimina anche gli appuntamenti analizzati per permettere ri-analisi completa
-    await db.analyzed_appointments.delete_many({"ambulatorio": ambulatorio})
-    
-    return {
-        "success": True, 
-        "deleted_choices": result.deleted_count,
-        "message": f"Eliminate {result.deleted_count} scelte. La prossima sincronizzazione ripartirà da zero."
-    }
-
 # Endpoint per gestire i nomi ignorati nella sincronizzazione (legacy - manteniamo per compatibilità)
 @api_router.post("/sync/ignored-names")
 async def add_ignored_name(data: dict, payload: dict = Depends(verify_token)):
