@@ -7061,8 +7061,13 @@ def parse_sheet_data_from_list(data_rows: list, year: int, sheet_name: str) -> t
             # Estrai nome paziente
             name = cell_value.strip()
             
-            # Salta celle che sembrano intestazioni o note
+            # Salta celle che sembrano intestazioni, note o orari
             if any(x in name.lower() for x in ['picc', 'med', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì']):
+                continue
+            
+            # Salta celle che sembrano orari (formato HH:MM)
+            import re
+            if re.match(r'^\d{1,2}:\d{2}$', name):
                 continue
             
             # Separa cognome e nome
