@@ -351,7 +351,7 @@ class AmbulatorioAPITester:
             )
 
 def main():
-    print("🏥 Testing Ambulatorio Infermieristico API - Batch Patient Creation with Implants")
+    print("🏥 Testing Ambulatorio Infermieristico API - Patient Type Change & Sync Features")
     print("=" * 80)
     
     tester = AmbulatorioAPITester()
@@ -362,16 +362,24 @@ def main():
             print("❌ Login failed, stopping tests")
             return 1
 
-        if not tester.test_batch_patient_creation_with_implant():
-            print("❌ Batch patient creation with implant failed, stopping tests")
+        if not tester.test_create_picc_patient():
+            print("❌ Patient creation failed, stopping tests")
             return 1
 
-        if not tester.test_get_impianti_list():
-            print("❌ Impianti list test failed")
+        if not tester.test_change_patient_type():
+            print("❌ Patient type change failed")
             return 1
 
-        if not tester.test_statistics_impianti():
-            print("❌ Statistics test failed")
+        if not tester.test_sync_timestamp_api():
+            print("❌ Sync timestamp API failed")
+            return 1
+
+        if not tester.test_create_appointment():
+            print("❌ Appointment creation failed")
+            return 1
+
+        if not tester.test_get_appointments():
+            print("❌ Get appointments failed")
             return 1
 
         # Print results
@@ -382,10 +390,9 @@ def main():
             print("✅ All backend API tests passed!")
             print("🔍 Key findings:")
             print("   - Login with Domenico credentials works")
-            print("   - Batch PICC patient creation with implant data works")
-            print("   - Implant records are created automatically")
-            print("   - Impianti list API shows created implants")
-            print("   - Statistics API integration works")
+            print("   - Patient type change API (PUT /api/patients/{id}/tipo) works")
+            print("   - Sync timestamp API (GET /api/sync/timestamp/{ambulatorio}) works")
+            print("   - Patient creation and appointment management works")
             return 0
         else:
             print("❌ Some tests failed")
