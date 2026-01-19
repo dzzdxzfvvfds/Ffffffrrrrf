@@ -5743,6 +5743,9 @@ async def sync_from_google_sheets(
             })
             
             if existing_apt:
+                # Se esiste ed è stato modificato manualmente, NON sovrascrivere
+                if existing_apt.get("manually_modified"):
+                    logger.info(f"Skip appuntamento esistente con modifica manuale: {apt['cognome']} {apt['nome']} {apt['date']} {apt['ora']}")
                 skipped_existing += 1
                 skipped_appointments += 1
                 continue
